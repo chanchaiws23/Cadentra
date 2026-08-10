@@ -14,7 +14,7 @@
     "@cadentra/domain": "*",
     "@cadentra/data": "*",
     "@cadentra/ui": "*",
-    "@supabase/supabase-js": "^2.112.0",
+    "@supabase/supabase-js": "^2.112.2",
     "date-fns": "^4.4.0",
     "lucide-react": "^1.28.0",
     "react": "^19.2.8",
