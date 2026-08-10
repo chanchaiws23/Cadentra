@@ -117,6 +117,28 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     else toast.info('ย้ายกลับไปยังแผนแล้ว')
   }
 
+  const applyTaskSchedule = async (taskId: string, start: string, end: string, expectedUpdatedAt?: string) => {
+    if (!dataGateway || !session) return false
+    const result = await dataGateway.rescheduleTask(session.user.id, taskId, start, end, expectedUpdatedAt)
+    if (!result.ok) {
+      if (result.error.code === 'conflict') await reload()
+      toast.error(result.error.code === 'conflict' ? 'เวลางานถูกแก้ไขจากอุปกรณ์อื่นแล้ว' : 'เปลี่ยนเวลางานไม่สำเร็จ', { description: result.error.message })
+      return false
+    }
+    await reload()
+    return true
+  }
+
+  const rescheduleTask = async (task: Task, start: string, end: string) => {
+    if (!await applyTaskSchedule(task.id, start, end, task.updatedAt)) return
+    commandHistory.push({
+      label: `เปลี่ยนเวลา “${task.title}”`,
+      undo: () => applyTaskSchedule(task.id, task.start, task.end),
+      redo: () => applyTaskSchedule(task.id, start, end),
+    })
+    toast.success('บันทึกเวลาใหม่แล้ว', { description: `${formatTime(start)}–${formatTime(end)}` })
+  }
+
   const toggleHabit = async (habit: Habit) => {
     if (!dataGateway || !session) return
     const complete = !habit.completedDates.includes(todayKey)
@@ -431,7 +453,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
           {loading ? <DataLoading/> : error ? <DataLoadError message={error} onRetry={() => void reload()}/> : <Routes>
             <Route path="/" element={<Navigate to={viewPaths.today} replace/>}/>
             <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={displayName} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => toast.info('AI Coach จะเปิดใช้เมื่อ Edge Function พร้อม')} />}/>
-            <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} onTask={toggleTask}/>}/>
+            <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} onTask={toggleTask} onReschedule={rescheduleTask}/>}/>
             <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
             <Route path={viewPaths.goals} element={<GoalsView goals={goals} milestones={milestones} tasks={managedTasks} onCreateGoal={createGoal} onToggleGoal={toggleGoal} onDeleteGoal={deleteGoal} onCreateMilestone={createMilestone} onToggleMilestone={toggleMilestone} onDeleteMilestone={deleteMilestone}/>}/>
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabit={toggleHabit} onAdd={() => setHabitAddOpen(true)}/>}/>

@@ -41,6 +41,7 @@ function remoteGateway(): UserDataGateway {
     softDeleteMilestone: vi.fn(async () => ({ ok: true as const, value: undefined })),
     restoreMilestone: vi.fn(async () => ({ ok: true as const, value: undefined })),
     setTaskStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    rescheduleTask: vi.fn(async () => ({ ok: true as const, value: undefined })),
     setTaskOccurrenceStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
     softDeleteTask: vi.fn(async () => ({ ok: true as const, value: undefined })),
     restoreTask: vi.fn(async () => ({ ok: true as const, value: undefined })),
@@ -212,5 +213,41 @@ describe('offline user data gateway', () => {
     online = true
     await gateway.syncPending?.('user-1')
     expect(remote.setTaskOccurrenceStatus).toHaveBeenCalledWith('user-1', 'task-1', '2026-08-10', 'done')
+  })
+
+  it('reschedules a task optimistically and replays its expected version', async () => {
+    let online = true
+    const remote = remoteGateway()
+    const gateway = createOfflineUserDataGateway(remote, new MemoryStorage(), { isOnline: () => online, createId: () => 'schedule-mutation' })
+    await gateway.load('user-1', '', '2026-08-10')
+
+    online = false
+    await gateway.rescheduleTask('user-1', 'task-1', '2026-08-11T03:00:00.000Z', '2026-08-11T04:00:00.000Z', '2026-08-10T00:00:00.000Z')
+    const cached = await gateway.load('user-1', '', '2026-08-10')
+    expect(cached.ok && cached.value.tasks[0]).toMatchObject({ start: '2026-08-11T03:00:00.000Z', end: '2026-08-11T04:00:00.000Z' })
+
+    online = true
+    await gateway.syncPending?.('user-1')
+    expect(remote.rescheduleTask).toHaveBeenCalledWith('user-1', 'task-1', '2026-08-11T03:00:00.000Z', '2026-08-11T04:00:00.000Z', '2026-08-10T00:00:00.000Z')
+  })
+
+  it('can force a local reschedule after a version conflict', async () => {
+    let online = true
+    const remote = remoteGateway()
+    vi.mocked(remote.rescheduleTask)
+      .mockResolvedValueOnce({ ok: false, error: { code: 'conflict', message: 'remote schedule changed', recoverable: true } })
+      .mockResolvedValue({ ok: true, value: undefined })
+    const gateway = createOfflineUserDataGateway(remote, new MemoryStorage(), { isOnline: () => online, createId: () => 'schedule-conflict' })
+    await gateway.load('user-1', '', '2026-08-10')
+    online = false
+    await gateway.rescheduleTask('user-1', 'task-1', '2026-08-11T03:00:00.000Z', '2026-08-11T04:00:00.000Z', 'old-version')
+
+    online = true
+    await gateway.syncPending?.('user-1')
+    expect(gateway.syncIssues?.('user-1')[0]).toMatchObject({ title: 'เวลางานมีข้อมูลชนกัน' })
+    await gateway.resolveSyncIssue?.('user-1', 'schedule-conflict', 'local')
+
+    expect(remote.rescheduleTask).toHaveBeenLastCalledWith('user-1', 'task-1', '2026-08-11T03:00:00.000Z', '2026-08-11T04:00:00.000Z')
+    expect(gateway.pendingCount?.('user-1')).toBe(0)
   })
 })

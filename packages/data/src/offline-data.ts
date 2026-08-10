@@ -20,6 +20,7 @@ type PendingMutation = { conflict?: string } & (
   | { id: string; type: 'milestone.delete'; milestoneId: string }
   | { id: string; type: 'milestone.restore'; milestoneId: string }
   | { id: string; type: 'task.status'; taskId: string; status: ItemStatus; expectedUpdatedAt?: string }
+  | { id: string; type: 'task.schedule'; taskId: string; start: string; end: string; expectedUpdatedAt?: string }
   | { id: string; type: 'task.occurrence-status'; taskId: string; localDate: string; status: ItemStatus }
   | { id: string; type: 'task.delete'; taskId: string }
   | { id: string; type: 'task.restore'; taskId: string }
@@ -148,6 +149,12 @@ export function createOfflineUserDataGateway(
         if (task) task.status = mutation.status
         break
       }
+      case 'task.schedule': {
+        const task = snapshot.tasks.find((entry) => entry.id === mutation.taskId)
+        if (task) { task.start = mutation.start; task.end = mutation.end }
+        snapshot.tasks.sort((a, b) => a.start.localeCompare(b.start))
+        break
+      }
       case 'task.occurrence-status': {
         const existing = snapshot.taskOccurrences.find((entry) => entry.taskId === mutation.taskId && entry.localDate === mutation.localDate)
         if (existing) existing.status = mutation.status
@@ -212,6 +219,7 @@ export function createOfflineUserDataGateway(
       case 'milestone.delete': return remote.softDeleteMilestone(userId, mutation.milestoneId)
       case 'milestone.restore': return remote.restoreMilestone(userId, mutation.milestoneId)
       case 'task.status': return remote.setTaskStatus(userId, mutation.taskId, mutation.status, mutation.expectedUpdatedAt)
+      case 'task.schedule': return remote.rescheduleTask(userId, mutation.taskId, mutation.start, mutation.end, mutation.expectedUpdatedAt)
       case 'task.occurrence-status': return remote.setTaskOccurrenceStatus(userId, mutation.taskId, mutation.localDate, mutation.status)
       case 'task.delete': return remote.softDeleteTask(userId, mutation.taskId)
       case 'task.restore': return remote.restoreTask(userId, mutation.taskId)
@@ -308,6 +316,7 @@ export function createOfflineUserDataGateway(
     softDeleteMilestone: (userId, milestoneId) => mutate(userId, { id: createId(), type: 'milestone.delete', milestoneId }),
     restoreMilestone: (userId, milestoneId) => mutate(userId, { id: createId(), type: 'milestone.restore', milestoneId }),
     setTaskStatus: (userId, taskId, status, expectedUpdatedAt) => mutate(userId, { id: createId(), type: 'task.status', taskId, status, expectedUpdatedAt }),
+    rescheduleTask: (userId, taskId, start, end, expectedUpdatedAt) => mutate(userId, { id: createId(), type: 'task.schedule', taskId, start, end, expectedUpdatedAt }),
     setTaskOccurrenceStatus: (userId, taskId, localDate, status) => mutate(userId, { id: createId(), type: 'task.occurrence-status', taskId, localDate, status }),
     softDeleteTask: (userId, taskId) => mutate(userId, { id: createId(), type: 'task.delete', taskId }),
     restoreTask: (userId, taskId) => mutate(userId, { id: createId(), type: 'task.restore', taskId }),
@@ -323,7 +332,7 @@ export function createOfflineUserDataGateway(
     syncIssues: (userId) => readQueue(userId).filter((mutation) => mutation.conflict).map((mutation) => ({
       id: mutation.id,
       kind: 'conflict' as const,
-      title: mutation.type === 'task.status' ? 'สถานะงานมีข้อมูลชนกัน' : 'ข้อมูลรอการตรวจสอบ',
+      title: mutation.type === 'task.status' ? 'สถานะงานมีข้อมูลชนกัน' : mutation.type === 'task.schedule' ? 'เวลางานมีข้อมูลชนกัน' : 'ข้อมูลรอการตรวจสอบ',
       detail: mutation.conflict!,
     })),
     async resolveSyncIssue(userId, mutationId, resolution) {
@@ -339,7 +348,9 @@ export function createOfflineUserDataGateway(
       }
       const result = mutation.type === 'task.status'
         ? await remote.setTaskStatus(userId, mutation.taskId, mutation.status)
-        : await replay(userId, { ...mutation, conflict: undefined })
+        : mutation.type === 'task.schedule'
+          ? await remote.rescheduleTask(userId, mutation.taskId, mutation.start, mutation.end)
+          : await replay(userId, { ...mutation, conflict: undefined })
       if (!result.ok) return result
       writeQueue(userId, queue.filter((entry) => entry.id !== mutationId))
       return { ok: true, value: undefined }

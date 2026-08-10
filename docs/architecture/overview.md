@@ -23,3 +23,9 @@ when the signed-in account changes, and stale toast actions cannot undo a newer
 command. Create operations join this history only after their gateway contract
 returns the generated entity ID; their inverse is a soft delete and Redo restores
 the same entity instead of creating a duplicate.
+
+Calendar rescheduling uses the same command history and offline queue. One-time
+tasks can move or resize only after a conflict preview, and the first write uses
+the last known `updated_at` value to detect concurrent edits. Undo and Redo use
+the accepted schedule as explicit inverse values. Recurring occurrences remain
+locked until recurrence exceptions have their own persistence model.

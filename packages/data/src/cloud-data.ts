@@ -74,6 +74,7 @@ export interface UserDataGateway {
   softDeleteMilestone(userId: string, milestoneId: string): Promise<DataResult<void>>
   restoreMilestone(userId: string, milestoneId: string): Promise<DataResult<void>>
   setTaskStatus(userId: string, taskId: string, status: ItemStatus, expectedUpdatedAt?: string): Promise<DataResult<void>>
+  rescheduleTask(userId: string, taskId: string, start: string, end: string, expectedUpdatedAt?: string): Promise<DataResult<void>>
   setTaskOccurrenceStatus(userId: string, taskId: string, localDate: string, status: ItemStatus): Promise<DataResult<void>>
   softDeleteTask(userId: string, taskId: string): Promise<DataResult<void>>
   restoreTask(userId: string, taskId: string): Promise<DataResult<void>>
@@ -409,6 +410,15 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
       if (expectedUpdatedAt && (!data || data.length === 0)) {
         return { ok: false, error: dataError('conflict', 'งานนี้ถูกแก้ไขจากอุปกรณ์อื่นแล้ว กรุณาเลือกเวอร์ชันที่ต้องการ') }
       }
+      return ok()
+    },
+
+    async rescheduleTask(userId, taskId, start, end, expectedUpdatedAt) {
+      let query = client.from('tasks').update({ starts_at: start, ends_at: end, updated_at: new Date().toISOString() }).eq('id', taskId).eq('user_id', userId)
+      if (expectedUpdatedAt) query = query.eq('updated_at', expectedUpdatedAt)
+      const { data, error } = await query.select('id')
+      if (error) return failure(error)
+      if (expectedUpdatedAt && (!data || data.length === 0)) return { ok: false, error: dataError('conflict', 'เวลาของงานนี้ถูกแก้ไขจากอุปกรณ์อื่นแล้ว') }
       return ok()
     },
 
