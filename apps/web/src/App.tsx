@@ -267,7 +267,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
             <Route path="/" element={<Navigate to={viewPaths.today} replace/>}/>
             <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={displayName} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => toast.info('AI Coach จะเปิดใช้เมื่อ Edge Function พร้อม')} />}/>
             <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} onTask={toggleTask}/>}/>
-            <Route path={viewPaths.tasks} element={<TasksView tasks={managedTasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
+            <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
             <Route path={viewPaths.goals} element={<GoalsView goals={goals} milestones={milestones} tasks={managedTasks} onCreateGoal={createGoal} onToggleGoal={toggleGoal} onDeleteGoal={deleteGoal} onCreateMilestone={createMilestone} onToggleMilestone={toggleMilestone} onDeleteMilestone={deleteMilestone}/>}/>
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabit={toggleHabit} onAdd={() => setHabitAddOpen(true)}/>}/>
             <Route path={viewPaths.focus} element={<FocusView tasks={managedTasks} notify={notify} onComplete={recordFocus}/>}/>
