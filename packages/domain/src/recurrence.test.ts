@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Task } from './index'
+import { conflictingTaskIds, findScheduleConflicts, type Task } from './index'
 import { collapseRecurringTasks, expandRecurringTasks } from './recurrence'
 
 const task: Task = { id: 'task-1', userId: 'user-1', title: 'Read', start: '2026-08-10T02:00:00Z', end: '2026-08-10T03:00:00Z', category: 'study', priority: 'medium', status: 'planned', recurring: true, recurrenceRule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' }
@@ -20,5 +20,12 @@ describe('recurring task expansion', () => {
     const collapsed = collapseRecurringTasks(expanded, '2026-08-12')
     expect(collapsed).toHaveLength(1)
     expect(collapsed[0].occurrenceDate).toBe('2026-08-12')
+  })
+
+  it('detects overlaps while allowing adjacent schedule blocks', () => {
+    const tasks = expandRecurringTasks([task], [], '2026-08-10', '2026-08-10', 'Asia/Bangkok')
+    expect(findScheduleConflicts(tasks, { start: '2026-08-10T02:30:00Z', end: '2026-08-10T03:30:00Z' })).toHaveLength(1)
+    expect(findScheduleConflicts(tasks, { start: '2026-08-10T03:00:00Z', end: '2026-08-10T04:00:00Z' })).toHaveLength(0)
+    expect(conflictingTaskIds([...tasks, { ...tasks[0], id: 'task-2', start: '2026-08-10T02:30:00Z', end: '2026-08-10T03:30:00Z' }])).toEqual(new Set([tasks[0].id, 'task-2']))
   })
 })

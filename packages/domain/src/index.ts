@@ -104,6 +104,23 @@ export function isOverlapping(a: Pick<Task, 'start' | 'end'>, b: Pick<Task, 'sta
   return new Date(a.start) < new Date(b.end) && new Date(b.start) < new Date(a.end)
 }
 
+export function findScheduleConflicts(tasks: readonly Task[], candidate: Pick<Task, 'start' | 'end'>, ignoreId?: string): Task[] {
+  return tasks.filter((task) => task.id !== ignoreId && isOverlapping(task, candidate))
+}
+
+export function conflictingTaskIds(tasks: readonly Task[]): Set<string> {
+  const ids = new Set<string>()
+  for (let index = 0; index < tasks.length; index += 1) {
+    for (let other = index + 1; other < tasks.length; other += 1) {
+      if (isOverlapping(tasks[index], tasks[other])) {
+        ids.add(tasks[index].id)
+        ids.add(tasks[other].id)
+      }
+    }
+  }
+  return ids
+}
+
 export function nextStreak(current: number, completedToday: boolean): number {
   return completedToday ? current + 1 : current
 }

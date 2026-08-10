@@ -7,7 +7,7 @@ import {
   LogOut, Plus, Search, Settings, Sparkles,
   Target, Trophy, X,
 } from 'lucide-react'
-import { collapseRecurringTasks, completionRate, pointsForCompletion, type Goal, type Habit, type Milestone, type Task } from '@cadentra/domain'
+import { collapseRecurringTasks, completionRate, findScheduleConflicts, pointsForCompletion, type Goal, type Habit, type Milestone, type Task } from '@cadentra/domain'
 import type { SyncIssue, UpdateProfileInput, UserDataGateway } from '@cadentra/data'
 import { PageHeading } from './components/PageHeading'
 import { AppToaster } from './components/AppToaster'
@@ -22,7 +22,7 @@ import { SettingsView } from './features/settings/SettingsView'
 import { useUserData } from './data/useUserData'
 import { useI18n } from './i18n/LocaleProvider'
 import type { MessageKey } from './i18n/messages'
-import { formatMinutes, localDateKey, todayKey } from './lib/date'
+import { formatMinutes, formatTime, localDateKey, todayKey } from './lib/date'
 import { pathToView, viewPaths, type View } from './routing'
 
 const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] = [
@@ -279,7 +279,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
       </main>
 
       {menuOpen && <button className="scrim" onClick={() => setMenuOpen(false)} aria-label="ปิดเมนู"/>}
-      {addOpen && <AddTaskModal goals={goals} onClose={() => setAddOpen(false)} onAdd={addTask}/>}
+      {addOpen && <AddTaskModal goals={goals} tasks={tasks} onClose={() => setAddOpen(false)} onAdd={addTask}/>}
       {habitAddOpen && <AddHabitModal onClose={() => setHabitAddOpen(false)} onAdd={addHabit}/>}
       <AppToaster/>
     </div>
@@ -309,9 +309,19 @@ function InsightsView({ tasks, habits, points, focusMinutes }: { tasks: Task[]; 
     <section className="streak-section"><div className="section-title"><div><h2>นิสัยที่กำลังเติบโต</h2><p>ความสม่ำเสมอสำคัญกว่าความสมบูรณ์แบบ</p></div></div>{habits.map(h => <div className="streak-row" key={h.id}><strong>{h.title}</strong><div>{Array.from({length: 14}, (_, i) => <i className={i < Math.min(h.streak, 14) ? 'filled' : ''} key={i}/>)}</div><span>{h.streak} วัน</span></div>)}</section></>
 }
 
-function AddTaskModal({ goals, onClose, onAdd }: { goals: Goal[]; onClose: () => void; onAdd: (title: string, time: string, duration: number, goalId?: string, recurrenceRule?: string) => void }) {
-  const [title, setTitle] = useState(''); const [time, setTime] = useState('15:30'); const [duration, setDuration] = useState(45); const [goalId, setGoalId] = useState(''); const [recurrenceRule, setRecurrenceRule] = useState('')
-  return <div className="modal-backdrop" onMouseDown={onClose}><form className="modal" onMouseDown={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); if (title.trim()) onAdd(title.trim(), time, duration, goalId || undefined, recurrenceRule || undefined) }}><div className="modal-head"><div><p className="eyebrow">เพิ่มอย่างรวดเร็ว</p><h2>วางลงในวันนี้</h2></div><button type="button" className="icon-button" onClick={onClose}><X/></button></div><label>สิ่งที่ต้องทำ<input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="เช่น อ่านหนังสือ 20 นาที"/></label><div className="form-grid"><label>เริ่มเวลา<input type="time" value={time} onChange={e => setTime(e.target.value)}/></label><label>ระยะเวลา<select value={duration} onChange={e => setDuration(Number(e.target.value))}><option value={15}>15 นาที</option><option value={30}>30 นาที</option><option value={45}>45 นาที</option><option value={60}>1 ชั่วโมง</option><option value={90}>1.5 ชั่วโมง</option></select></label></div><div className="form-grid">{goals.length > 0 && <label>เชื่อมกับเป้าหมาย<select value={goalId} onChange={e => setGoalId(e.target.value)}><option value="">ไม่เชื่อมเป้าหมาย</option>{goals.filter(goal => goal.status !== 'done').map(goal => <option value={goal.id} key={goal.id}>{goal.title}</option>)}</select></label>}<label>ทำซ้ำ<select aria-label="ทำซ้ำ" value={recurrenceRule} onChange={e => setRecurrenceRule(e.target.value)}><option value="">ไม่ทำซ้ำ</option><option value="FREQ=DAILY">ทุกวัน</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">วันจันทร์–ศุกร์</option><option value="FREQ=WEEKLY">ทุกสัปดาห์</option></select></label></div>{recurrenceRule && <p className="mt-3 text-xs text-accent">ระบบจะสร้างรอบงานเมื่อแสดงปฏิทิน โดยไม่บันทึกงานอนาคตซ้ำทั้งหมด</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>ยกเลิก</button><button className="primary" disabled={!title.trim()}>เพิ่มลงตาราง</button></div></form></div>
+export function AddTaskModal({ goals, tasks, onClose, onAdd }: { goals: Goal[]; tasks: Task[]; onClose: () => void; onAdd: (title: string, time: string, duration: number, goalId?: string, recurrenceRule?: string) => void }) {
+  const [title, setTitle] = useState(''); const [time, setTime] = useState('15:30'); const [duration, setDuration] = useState(45); const [goalId, setGoalId] = useState(''); const [recurrenceRule, setRecurrenceRule] = useState(''); const [conflicts, setConflicts] = useState<Task[]>([])
+  const save = () => onAdd(title.trim(), time, duration, goalId || undefined, recurrenceRule || undefined)
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!title.trim()) return
+    const [hour, minute] = time.split(':').map(Number)
+    const start = new Date(); start.setHours(hour, minute, 0, 0)
+    const matches = findScheduleConflicts(tasks, { start: start.toISOString(), end: new Date(start.getTime() + duration * 60_000).toISOString() })
+    if (matches.length) { setConflicts(matches); return }
+    save()
+  }
+  return <div className="modal-backdrop" onMouseDown={onClose}><form className="modal" onMouseDown={e => e.stopPropagation()} onSubmit={submit}><div className="modal-head"><div><p className="eyebrow">เพิ่มอย่างรวดเร็ว</p><h2>วางลงในวันนี้</h2></div><button type="button" className="icon-button" onClick={onClose}><X/></button></div><label>สิ่งที่ต้องทำ<input autoFocus value={title} onChange={e => { setTitle(e.target.value); setConflicts([]) }} placeholder="เช่น อ่านหนังสือ 20 นาที"/></label><div className="form-grid"><label>เริ่มเวลา<input type="time" value={time} onChange={e => { setTime(e.target.value); setConflicts([]) }}/></label><label>ระยะเวลา<select value={duration} onChange={e => { setDuration(Number(e.target.value)); setConflicts([]) }}><option value={15}>15 นาที</option><option value={30}>30 นาที</option><option value={45}>45 นาที</option><option value={60}>1 ชั่วโมง</option><option value={90}>1.5 ชั่วโมง</option></select></label></div><div className="form-grid">{goals.length > 0 && <label>เชื่อมกับเป้าหมาย<select value={goalId} onChange={e => setGoalId(e.target.value)}><option value="">ไม่เชื่อมเป้าหมาย</option>{goals.filter(goal => goal.status !== 'done').map(goal => <option value={goal.id} key={goal.id}>{goal.title}</option>)}</select></label>}<label>ทำซ้ำ<select aria-label="ทำซ้ำ" value={recurrenceRule} onChange={e => setRecurrenceRule(e.target.value)}><option value="">ไม่ทำซ้ำ</option><option value="FREQ=DAILY">ทุกวัน</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">วันจันทร์–ศุกร์</option><option value="FREQ=WEEKLY">ทุกสัปดาห์</option></select></label></div>{recurrenceRule && <p className="mt-3 text-xs text-accent">ระบบจะสร้างรอบงานเมื่อแสดงปฏิทิน โดยไม่บันทึกงานอนาคตซ้ำทั้งหมด</p>}{conflicts.length > 0 && <div className="mt-4 rounded-xl border border-[#dcc48f] bg-[#f4ecd9] p-3 text-xs"><strong className="block text-[#7a5623]">เวลานี้ชนกับ {conflicts.length} งาน</strong><ul className="mt-2 space-y-1 text-muted">{conflicts.slice(0, 3).map(task => <li key={task.id}>• {task.title} · {formatTime(task.start)}</li>)}</ul><p className="mt-2 text-muted">คุณสามารถกลับไปแก้เวลา หรือยืนยันเพื่อวางงานซ้อนกันได้</p></div>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>ยกเลิก</button>{conflicts.length > 0 && <button type="button" className="secondary" onClick={() => setConflicts([])}>แก้เวลา</button>}<button type={conflicts.length ? 'button' : 'submit'} className="primary" disabled={!title.trim()} onClick={conflicts.length ? save : undefined}>{conflicts.length ? 'ยืนยันเพิ่มงาน' : 'เพิ่มลงตาราง'}</button></div></form></div>
 }
 
 function AddHabitModal({ onClose, onAdd }: { onClose: () => void; onAdd: (title: string, cue: string, target: number, unit: string) => void }) {
