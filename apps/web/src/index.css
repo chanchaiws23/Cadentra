@@ -1,4 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap');
+@layer theme, base, legacy, components, utilities;
 @import 'tailwindcss';
+@import './App.css' layer(legacy);
 
 @theme {
   --font-sans: 'DM Sans', 'Noto Sans Thai', sans-serif;

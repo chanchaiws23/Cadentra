@@ -10,6 +10,7 @@ describe('Tailwind foundation', () => {
 
     expect(viteConfig).toContain("import tailwindcss from '@tailwindcss/vite'")
     expect(viteConfig).toContain('tailwindcss()')
+    expect(viteConfig).toContain("name: 'supabase-vendor'")
     expect(stylesheet).toContain("@import 'tailwindcss'")
     expect(stylesheet).toContain('--color-accent: #246b50')
     expect(stylesheet).toContain('--font-display:')
