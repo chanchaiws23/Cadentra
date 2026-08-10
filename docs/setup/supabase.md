@@ -61,3 +61,21 @@ same Supabase project referenced by `VITE_SUPABASE_URL`.
 Google Calendar client secrets and OpenAI keys are server credentials. Before
 those integrations are enabled, store them as Supabase Edge Function secrets;
 do not rename them with a `VITE_` prefix and do not commit them.
+
+## Deploy the account-deletion function
+
+The Settings page can export account data immediately through RLS. Permanent
+account deletion additionally requires the server-authorized Edge Function:
+
+```bash
+npx supabase login
+npx supabase link --project-ref YOUR_PROJECT_REF
+npx supabase secrets set ALLOWED_ORIGINS=http://localhost:5173,https://YOUR_PRODUCTION_DOMAIN
+npx supabase functions deploy delete-account
+```
+
+Hosted Supabase provides `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and
+`SUPABASE_SERVICE_ROLE_KEY` to the function environment. Never copy the service
+role key into `.env.local` or any `VITE_` variable. The function verifies the
+caller's access token, removes files under the user's folder in every bucket,
+and then deletes the Auth user so database rows cascade.
