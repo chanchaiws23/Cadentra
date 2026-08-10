@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   BarChart3, Bell, Bot, CalendarDays, Check, CheckCircle2, ChevronDown,
-  Circle, Flame, Focus, Gauge, LayoutList, Menu, MoreHorizontal,
+  Circle, Flame, Focus, Gauge, Languages, LayoutList, Menu, MoreHorizontal,
   Pause, Play, Plus, RotateCcw, Search, Settings, Sparkles, TimerReset,
   Trophy, X, Zap,
 } from 'lucide-react'
 import { completionRate, pointsForCompletion, type AIProposal, type Habit, type Task } from '@cadentra/domain'
+import { useI18n } from './i18n/LocaleProvider'
+import type { MessageKey } from './i18n/messages'
 import './App.css'
 
 type View = 'today' | 'calendar' | 'tasks' | 'habits' | 'focus' | 'insights'
@@ -29,18 +31,19 @@ const initialHabits: Habit[] = [
   { id: 'h3', userId: 'demo', title: 'เขียนบันทึก', cue: 'ก่อนเข้านอน', target: 1, unit: 'ครั้ง', streak: 4, completedDates: [] },
 ]
 
-const navItems: { id: View; label: string; icon: typeof CalendarDays }[] = [
-  { id: 'today', label: 'วันนี้', icon: Gauge },
-  { id: 'calendar', label: 'ปฏิทิน', icon: CalendarDays },
-  { id: 'tasks', label: 'งาน', icon: LayoutList },
-  { id: 'habits', label: 'นิสัย', icon: Flame },
-  { id: 'focus', label: 'โฟกัส', icon: Focus },
-  { id: 'insights', label: 'ข้อมูลเชิงลึก', icon: BarChart3 },
+const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] = [
+  { id: 'today', labelKey: 'nav.today', icon: Gauge },
+  { id: 'calendar', labelKey: 'nav.calendar', icon: CalendarDays },
+  { id: 'tasks', labelKey: 'nav.tasks', icon: LayoutList },
+  { id: 'habits', labelKey: 'nav.habits', icon: Flame },
+  { id: 'focus', labelKey: 'nav.focus', icon: Focus },
+  { id: 'insights', labelKey: 'nav.insights', icon: BarChart3 },
 ]
 
 const formatTime = (value: string) => new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit' }).format(new Date(value))
 
 function App() {
+  const { locale, setLocale, t } = useI18n()
   const [view, setView] = useState<View>('today')
   const [tasks, setTasks] = useState<Task[]>(() => JSON.parse(localStorage.getItem('cadentra.tasks') ?? 'null') ?? initialTasks)
   const [habits, setHabits] = useState<Habit[]>(() => JSON.parse(localStorage.getItem('cadentra.habits') ?? 'null') ?? initialHabits)
@@ -89,15 +92,15 @@ function App() {
       <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
         <div className="brand"><span className="brand-mark">C</span><span>Cadentra</span></div>
         <nav aria-label="เมนูหลัก">
-          {navItems.map(({ id, label, icon: Icon }) => (
+          {navItems.map(({ id, labelKey, icon: Icon }) => (
             <button key={id} className={view === id ? 'nav-item active' : 'nav-item'} onClick={() => { setView(id); setMenuOpen(false) }}>
-              <Icon size={18} strokeWidth={1.8}/><span>{label}</span>
+              <Icon size={18} strokeWidth={1.8}/><span>{t(labelKey)}</span>
             </button>
           ))}
         </nav>
         <div className="sidebar-bottom">
           <button className="nav-item"><Trophy size={18}/><span>เลเวล 4</span><em>{points} XP</em></button>
-          <button className="nav-item"><Settings size={18}/><span>ตั้งค่า</span></button>
+          <button className="nav-item"><Settings size={18}/><span>{t('nav.settings')}</span></button>
           <div className="profile"><div className="avatar">ช</div><div><strong>ชัย</strong><small>ซิงก์ในเครื่อง</small></div><MoreHorizontal size={18}/></div>
         </div>
       </aside>
@@ -105,8 +108,8 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <button className="icon-button mobile-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="เปิดเมนู"><Menu/></button>
-          <div className="search"><Search size={16}/><span>ค้นหาหรือเพิ่มอย่างรวดเร็ว</span><kbd>⌘ K</kbd></div>
-          <div className="top-actions"><button className="icon-button" aria-label="การแจ้งเตือน"><Bell size={19}/><i/></button><button className="primary compact" onClick={() => setAddOpen(true)}><Plus size={17}/> เพิ่ม</button></div>
+          <div className="search"><Search size={16}/><span>{t('top.search')}</span><kbd>⌘ K</kbd></div>
+          <div className="top-actions"><button className="language-button" onClick={() => setLocale(locale === 'th' ? 'en' : 'th')} aria-label={t('action.language')}><Languages size={16}/>{locale.toUpperCase()}</button><button className="icon-button" aria-label={t('top.notifications')}><Bell size={19}/><i/></button><button className="primary compact" onClick={() => setAddOpen(true)}><Plus size={17}/> {t('action.add')}</button></div>
         </header>
 
         <section className="content">
@@ -132,22 +135,23 @@ function PageHeading({ eyebrow, title, detail, action }: { eyebrow: string; titl
 }
 
 function Today({ tasks, habits, rate, completedHabits, onTask, onHabit, onCoach }: { tasks: Task[]; habits: Habit[]; rate: number; completedHabits: number; onTask: (task: Task) => void; onHabit: (habit: Habit) => void; onCoach: () => void }) {
+  const { t } = useI18n()
   return <>
-    <PageHeading eyebrow="อังคาร · 4 สิงหาคม" title="สวัสดีตอนบ่าย, ชัย" detail="เหลืองานสำคัญอีก 2 ช่วง วันนี้ยังมีพื้นที่หายใจเพียงพอ" action={<button className="coach-button" onClick={onCoach}><Sparkles size={17}/> ให้ Coach ช่วยจัดวัน</button>}/>
+    <PageHeading eyebrow={t('today.eyebrow')} title={t('today.title')} detail={t('today.detail')} action={<button className="coach-button" onClick={onCoach}><Sparkles size={17}/> {t('action.coach')}</button>}/>
     <div className="progress-line"><span style={{ width: `${rate}%` }}/></div>
-    <div className="daily-summary"><div><strong>{rate}%</strong><span>แผนวันนี้</span></div><div><strong>{tasks.filter(t => t.status === 'done').length}/{tasks.length}</strong><span>งานสำเร็จ</span></div><div><strong>{completedHabits}/{habits.length}</strong><span>นิสัย</span></div><div><strong>1ชม. 30น.</strong><span>เวลาโฟกัส</span></div></div>
+    <div className="daily-summary"><div><strong>{rate}%</strong><span>{t('today.plan')}</span></div><div><strong>{tasks.filter(t => t.status === 'done').length}/{tasks.length}</strong><span>{t('today.tasks')}</span></div><div><strong>{completedHabits}/{habits.length}</strong><span>{t('today.habits')}</span></div><div><strong>1ชม. 30น.</strong><span>{t('today.focusTime')}</span></div></div>
     <div className="today-grid">
       <section className="timeline-section">
-        <div className="section-title"><div><h2>ตารางวันนี้</h2><p>เวลาท้องถิ่น · กรุงเทพฯ</p></div><button className="text-button">จัดตาราง <ChevronDown size={15}/></button></div>
+        <div className="section-title"><div><h2>{t('today.schedule')}</h2><p>{t('today.timezone')}</p></div><button className="text-button">{t('action.schedule')} <ChevronDown size={15}/></button></div>
         <div className="timeline">
           {tasks.map((task) => <TimelineItem key={task.id} task={task} onToggle={() => onTask(task)}/>) }
         </div>
       </section>
       <aside className="context-panel">
-        <div className="section-title"><div><h2>จังหวะประจำวัน</h2><p>{completedHabits} จาก {habits.length} สำเร็จ</p></div></div>
+        <div className="section-title"><div><h2>{t('today.rhythm')}</h2><p>{completedHabits}/{habits.length} {t('today.completed')}</p></div></div>
         <div className="habit-list compact-list">{habits.map((habit) => <HabitRow key={habit.id} habit={habit} onToggle={() => onHabit(habit)}/>)}</div>
-        <div className="next-focus"><span className="focus-icon"><Zap size={18}/></span><div><small>ช่วงโฟกัสถัดไป</small><strong>Deep work · 45 นาที</strong></div><button aria-label="เริ่มโฟกัส"><Play size={16} fill="currentColor"/></button></div>
-        <blockquote>“วินัยที่ดีไม่ต้องสมบูรณ์แบบ แค่กลับมาให้เร็วขึ้นในแต่ละครั้ง”</blockquote>
+        <div className="next-focus"><span className="focus-icon"><Zap size={18}/></span><div><small>{t('today.nextFocus')}</small><strong>Deep work · 45 นาที</strong></div><button aria-label="เริ่มโฟกัส"><Play size={16} fill="currentColor"/></button></div>
+        <blockquote>{t('today.quote')}</blockquote>
       </aside>
     </div>
   </>
@@ -168,8 +172,9 @@ function HabitRow({ habit, onToggle }: { habit: Habit; onToggle: () => void }) {
 }
 
 function CalendarView({ tasks, onTask }: { tasks: Task[]; onTask: (task: Task) => void }) {
+  const { t } = useI18n()
   const days = ['จ. 3', 'อ. 4', 'พ. 5', 'พฤ. 6', 'ศ. 7']
-  return <><PageHeading eyebrow="สัปดาห์ที่ 32" title="ปฏิทิน" detail="เห็นภาระ เวลาโฟกัส และพื้นที่ว่างในสัปดาห์เดียว" action={<div className="segmented"><button>วัน</button><button className="active">สัปดาห์</button><button>เดือน</button></div>}/>
+  return <><PageHeading eyebrow={t('calendar.eyebrow')} title={t('calendar.title')} detail={t('calendar.detail')} action={<div className="segmented"><button>วัน</button><button className="active">สัปดาห์</button><button>เดือน</button></div>}/>
     <div className="calendar-board"><div className="calendar-corner">GMT+7</div>{days.map((day, index) => <div className={index === 1 ? 'calendar-day active' : 'calendar-day'} key={day}>{day}<strong>{index + 3}</strong></div>)}
       {Array.from({ length: 10 }, (_, row) => <div className="calendar-hour" key={row}>{8 + row}:00</div>)}
       <div className="calendar-grid-lines">{Array.from({ length: 50 }, (_, index) => <i key={index}/>)}</div>
@@ -178,31 +183,35 @@ function CalendarView({ tasks, onTask }: { tasks: Task[]; onTask: (task: Task) =
 }
 
 function TasksView({ tasks, onTask, onAdd }: { tasks: Task[]; onTask: (task: Task) => void; onAdd: () => void }) {
+  const { t } = useI18n()
   const groups = ['in_progress', 'planned', 'done'] as const
   const labels = { in_progress: 'กำลังทำ', planned: 'วางแผนแล้ว', done: 'สำเร็จ' }
-  return <><PageHeading eyebrow="พื้นที่จัดการ" title="งานทั้งหมด" detail="เก็บทุกสิ่งไว้ที่เดียว แล้วเลือกสิ่งที่สำคัญจริง ๆ" action={<button className="primary" onClick={onAdd}><Plus size={17}/> เพิ่มงาน</button>}/>
+  return <><PageHeading eyebrow={t('tasks.eyebrow')} title={t('tasks.title')} detail={t('tasks.detail')} action={<button className="primary" onClick={onAdd}><Plus size={17}/> {t('action.add')}</button>}/>
     <div className="task-toolbar"><div className="segmented"><button className="active">รายการ</button><button>ลำดับความสำคัญ</button></div><button className="filter-button">ทุกหมวดหมู่ <ChevronDown size={14}/></button></div>
     <div className="task-groups">{groups.map((group) => <section key={group}><div className="group-heading"><h2>{labels[group]}</h2><span>{tasks.filter(t => t.status === group).length}</span></div>{tasks.filter(t => t.status === group).map(task => <div className="task-row" key={task.id}><button className="check-button" onClick={() => onTask(task)}>{task.status === 'done' ? <Check size={15}/> : <Circle size={15}/>}</button><div><strong>{task.title}</strong><small>{task.category} · {formatTime(task.start)}</small></div><span className={`priority ${task.priority}`}>{task.priority}</span><MoreHorizontal size={17}/></div>)}</section>)}</div></>
 }
 
 function HabitsView({ habits, onHabit }: { habits: Habit[]; onHabit: (habit: Habit) => void }) {
-  return <><PageHeading eyebrow="สร้างความสม่ำเสมอ" title="นิสัยของฉัน" detail="ความก้าวหน้าไม่หายไปเพราะวันที่ไม่สมบูรณ์แบบ" action={<button className="primary"><Plus size={17}/> สร้างนิสัย</button>}/>
+  const { t } = useI18n()
+  return <><PageHeading eyebrow={t('habits.eyebrow')} title={t('habits.title')} detail={t('habits.detail')} action={<button className="primary"><Plus size={17}/> {t('action.add')}</button>}/>
     <div className="habit-hero"><div><span>ความสม่ำเสมอสัปดาห์นี้</span><strong>82%</strong><p>ดีขึ้น 9% จากสัปดาห์ก่อน</p></div><div className="week-dots">{['จ','อ','พ','พฤ','ศ','ส','อา'].map((day, i) => <span className={i < 5 ? 'filled' : ''} key={day}>{day}</span>)}</div></div>
     <div className="habit-table"><div className="habit-table-head"><span>นิสัย</span><span>เป้าหมาย</span><span>Streak</span><span>วันนี้</span></div>{habits.map(habit => <div className="habit-table-row" key={habit.id}><div><span className="habit-symbol"><Flame size={18}/></span><div><strong>{habit.title}</strong><small>{habit.cue}</small></div></div><span>{habit.target} {habit.unit}</span><span><Flame size={14}/> {habit.streak} วัน</span><button onClick={() => onHabit(habit)} className={habit.completedDates.includes(todayKey) ? 'done' : ''}>{habit.completedDates.includes(todayKey) ? <Check/> : <Circle/>}</button></div>)}</div></>
 }
 
 function FocusView({ tasks, notify }: { tasks: Task[]; notify: (message: string) => void }) {
+  const { t } = useI18n()
   const [seconds, setSeconds] = useState(45 * 60)
   const [running, setRunning] = useState(false)
   useEffect(() => { if (!running) return; const timer = window.setInterval(() => setSeconds(value => { if (value <= 1) { setRunning(false); notify('จบช่วงโฟกัสแล้ว พักสายตาสักครู่'); return 45 * 60 } return value - 1 }), 1000); return () => clearInterval(timer) }, [running, notify])
   const minutes = Math.floor(seconds / 60); const secs = seconds % 60
-  return <><PageHeading eyebrow="พื้นที่เงียบ" title="โหมดโฟกัส" detail="ทำสิ่งเดียวให้เต็มที่ แล้วพักอย่างตั้งใจ"/>
+  return <><PageHeading eyebrow={t('focus.eyebrow')} title={t('focus.title')} detail={t('focus.detail')}/>
     <div className="focus-stage"><div className={running ? 'timer-ring running' : 'timer-ring'} style={{ '--progress': `${(seconds / 2700) * 360}deg` } as React.CSSProperties}><div><small>{running ? 'กำลังโฟกัส' : 'พร้อมเมื่อคุณพร้อม'}</small><strong>{String(minutes).padStart(2,'0')}:{String(secs).padStart(2,'0')}</strong><span>45 นาที</span></div></div><div className="focus-task"><small>โฟกัสกับ</small><strong>{tasks.find(t => t.status === 'in_progress')?.title ?? 'เลือกงานหนึ่งอย่าง'}</strong></div><div className="timer-actions"><button className="icon-button large" onClick={() => { setSeconds(45 * 60); setRunning(false) }}><TimerReset/></button><button className="play-button" onClick={() => setRunning(!running)}>{running ? <Pause fill="currentColor"/> : <Play fill="currentColor"/>}</button><button className="icon-button large"><MoreHorizontal/></button></div><p className="focus-note">ปิดสิ่งรบกวนแล้ว · การแจ้งเตือนสำคัญยังทำงาน</p></div></>
 }
 
 function InsightsView({ tasks, habits, points }: { tasks: Task[]; habits: Habit[]; points: number }) {
+  const { t } = useI18n()
   const bars = [46, 62, 54, 78, 88, 32, 68]
-  return <><PageHeading eyebrow="7 วันที่ผ่านมา" title="ข้อมูลเชิงลึก" detail="ดูแนวโน้มเพื่อปรับระบบ ไม่ใช่เพื่อตัดสินตัวเอง" action={<button className="filter-button">สัปดาห์นี้ <ChevronDown size={14}/></button>}/>
+  return <><PageHeading eyebrow={t('insights.eyebrow')} title={t('insights.title')} detail={t('insights.detail')} action={<button className="filter-button">สัปดาห์นี้ <ChevronDown size={14}/></button>}/>
     <div className="insight-strip"><div><small>ความสม่ำเสมอ</small><strong>82%</strong><em>+9%</em></div><div><small>เวลาโฟกัส</small><strong>8ชม. 25น.</strong><em>+1ชม. 10น.</em></div><div><small>งานสำเร็จ</small><strong>{tasks.filter(t => t.status === 'done').length * 7}</strong><em>ตามแผน 76%</em></div><div><small>คะแนนสะสม</small><strong>{points}</strong><em>เลเวล 4</em></div></div>
     <div className="insights-grid"><section className="chart-panel"><div className="section-title"><div><h2>จังหวะการทำงาน</h2><p>คะแนนความสม่ำเสมอรายวัน</p></div></div><div className="bar-chart">{bars.map((bar, index) => <div key={index}><span style={{ height: `${bar}%` }}/><small>{['จ','อ','พ','พฤ','ศ','ส','อา'][index]}</small></div>)}</div></section><section className="reflection-panel"><span className="reflection-icon"><Sparkles/></span><p className="eyebrow">สิ่งที่ค้นพบ</p><h2>ช่วงเช้าคือเวลาที่ดีที่สุดของคุณ</h2><p>งานที่เริ่มก่อน 10:00 สำเร็จมากกว่าช่วงอื่น 34% ลองกันเวลา 09:00–11:00 ไว้สำหรับงานสำคัญ</p><button className="text-button">ใช้กับสัปดาห์หน้า →</button></section></div>
     <section className="streak-section"><div className="section-title"><div><h2>นิสัยที่กำลังเติบโต</h2><p>ความสม่ำเสมอสำคัญกว่าความสมบูรณ์แบบ</p></div></div>{habits.map(h => <div className="streak-row" key={h.id}><strong>{h.title}</strong><div>{Array.from({length: 14}, (_, i) => <i className={i < Math.min(h.streak, 14) ? 'filled' : ''} key={i}/>)}</div><span>{h.streak} วัน</span></div>)}</section></>
