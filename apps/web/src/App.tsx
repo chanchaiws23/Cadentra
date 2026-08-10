@@ -3,12 +3,13 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import {
   BarChart3, Bell, Bot, CalendarDays, CheckCircle2, ChevronDown,
   Flame, Focus, Gauge, Languages, LayoutList, Menu, MoreHorizontal,
-  Pause, Play, Plus, RotateCcw, Search, Settings, Sparkles, TimerReset,
+  Plus, RotateCcw, Search, Settings, Sparkles,
   Target, Trophy, X,
 } from 'lucide-react'
 import { completionRate, pointsForCompletion, type AIProposal, type Habit, type Task } from '@cadentra/domain'
 import { PageHeading } from './components/PageHeading'
 import { CalendarView } from './features/calendar/CalendarView'
+import { FocusView } from './features/focus/FocusView'
 import { HabitsView } from './features/habits/HabitsView'
 import { TasksView } from './features/tasks/TasksView'
 import { TodayView } from './features/today/TodayView'
@@ -144,16 +145,6 @@ function App() {
 
 function PlaceholderView({ eyebrow, title, detail }: { eyebrow: string; title: string; detail: string }) {
   return <PageHeading eyebrow={eyebrow} title={title} detail={detail}/>
-}
-
-function FocusView({ tasks, notify }: { tasks: Task[]; notify: (message: string) => void }) {
-  const { t } = useI18n()
-  const [seconds, setSeconds] = useState(45 * 60)
-  const [running, setRunning] = useState(false)
-  useEffect(() => { if (!running) return; const timer = window.setInterval(() => setSeconds(value => { if (value <= 1) { setRunning(false); notify('จบช่วงโฟกัสแล้ว พักสายตาสักครู่'); return 45 * 60 } return value - 1 }), 1000); return () => clearInterval(timer) }, [running, notify])
-  const minutes = Math.floor(seconds / 60); const secs = seconds % 60
-  return <><PageHeading eyebrow={t('focus.eyebrow')} title={t('focus.title')} detail={t('focus.detail')}/>
-    <div className="focus-stage"><div className={running ? 'timer-ring running' : 'timer-ring'} style={{ '--progress': `${(seconds / 2700) * 360}deg` } as React.CSSProperties}><div><small>{running ? 'กำลังโฟกัส' : 'พร้อมเมื่อคุณพร้อม'}</small><strong>{String(minutes).padStart(2,'0')}:{String(secs).padStart(2,'0')}</strong><span>45 นาที</span></div></div><div className="focus-task"><small>โฟกัสกับ</small><strong>{tasks.find(t => t.status === 'in_progress')?.title ?? 'เลือกงานหนึ่งอย่าง'}</strong></div><div className="timer-actions"><button className="icon-button large" onClick={() => { setSeconds(45 * 60); setRunning(false) }}><TimerReset/></button><button className="play-button" onClick={() => setRunning(!running)}>{running ? <Pause fill="currentColor"/> : <Play fill="currentColor"/>}</button><button className="icon-button large"><MoreHorizontal/></button></div><p className="focus-note">ปิดสิ่งรบกวนแล้ว · การแจ้งเตือนสำคัญยังทำงาน</p></div></>
 }
 
 function InsightsView({ tasks, habits, points }: { tasks: Task[]; habits: Habit[]; points: number }) {
