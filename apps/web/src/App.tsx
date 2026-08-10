@@ -135,6 +135,34 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     return true
   }
 
+  const exportAccount = async () => {
+    if (!dataGateway || !session) return false
+    const result = await dataGateway.exportAccount(session.user.id)
+    if (!result.ok) {
+      toast.error('ส่งออกข้อมูลไม่สำเร็จ', { description: result.error.message })
+      return false
+    }
+    const url = URL.createObjectURL(new Blob([JSON.stringify(result.value, null, 2)], { type: 'application/json' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `cadentra-export-${todayKey}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+    notify('เตรียมไฟล์ข้อมูลแล้ว')
+    return true
+  }
+
+  const deleteAccount = async () => {
+    if (!dataGateway) return false
+    const result = await dataGateway.deleteAccount()
+    if (!result.ok) {
+      toast.error('ลบบัญชีไม่สำเร็จ', { description: result.error.message })
+      return false
+    }
+    toast.success('ลบบัญชีและข้อมูลแล้ว')
+    return true
+  }
+
   const handleSignOut = async () => {
     const result = await signOut()
     if (!result.ok) toast.error('ออกจากระบบไม่สำเร็จ', { description: result.message })
@@ -179,7 +207,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabit={toggleHabit} onAdd={() => setHabitAddOpen(true)}/>}/>
             <Route path={viewPaths.focus} element={<FocusView tasks={tasks} notify={notify} onComplete={recordFocus}/>}/>
             <Route path={viewPaths.insights} element={<InsightsView tasks={tasks} habits={habits} points={points} focusMinutes={focusMinutes}/>}/>
-            <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} onSave={saveProfile}/>}/>
+            <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} onSave={saveProfile} onExport={exportAccount} onDelete={deleteAccount}/>}/>
             <Route path="*" element={<Navigate to={viewPaths.today} replace/>}/>
           </Routes>}
         </section>

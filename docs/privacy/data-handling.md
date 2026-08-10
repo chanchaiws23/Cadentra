@@ -6,7 +6,8 @@
   exercise duration. Cadentra uploads daily aggregates, never raw health records.
 - Health information is excluded from AI context unless a separate consent flag
   is enabled. Consent can be withdrawn without disabling core planning features.
-- Account deletion removes connected tokens, user rows, exports, and stored files.
+- Account export reads user-owned rows through RLS and excludes encrypted token references.
+- Account deletion is authorized in an Edge Function, removes user-owned stored files,
+  and deletes the Auth user so connected tokens and database rows cascade.
 - Product analytics must not capture task titles, reflection text, health data,
   calendar content, or AI conversation content.
-

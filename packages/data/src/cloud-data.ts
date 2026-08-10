@@ -27,9 +27,17 @@ export interface CreateHabitInput {
 
 export type UpdateProfileInput = Omit<UserProfile, 'id'>
 
+export interface AccountExport {
+  exportedAt: string
+  userId: string
+  data: Record<string, unknown[]>
+}
+
 export interface UserDataGateway {
   load(userId: string, focusSince: string, localDate: string): Promise<DataResult<UserDataSnapshot>>
   saveProfile(userId: string, input: UpdateProfileInput): Promise<DataResult<void>>
+  exportAccount(userId: string): Promise<DataResult<AccountExport>>
+  deleteAccount(): Promise<DataResult<void>>
   createTask(userId: string, input: CreateTaskInput): Promise<DataResult<void>>
   setTaskStatus(userId: string, taskId: string, status: ItemStatus): Promise<DataResult<void>>
   softDeleteTask(userId: string, taskId: string): Promise<DataResult<void>>
@@ -187,6 +195,45 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' })
       return error ? failure(error) : ok()
+    },
+
+    async exportAccount(userId) {
+      const queries = {
+        profiles: client.from('profiles').select('*').eq('id', userId),
+        goals: client.from('goals').select('*').eq('user_id', userId),
+        tasks: client.from('tasks').select('*').eq('user_id', userId),
+        habits: client.from('habits').select('*').eq('user_id', userId),
+        habit_checkins: client.from('habit_checkins').select('*').eq('user_id', userId),
+        focus_sessions: client.from('focus_sessions').select('*').eq('user_id', userId),
+        reflections: client.from('reflections').select('*').eq('user_id', userId),
+        point_transactions: client.from('point_transactions').select('*').eq('user_id', userId),
+        ai_proposals: client.from('ai_proposals').select('*').eq('user_id', userId),
+        calendar_connections: client.from('calendar_connections').select('id,user_id,provider,provider_account_id,sync_cursor,sync_status,last_synced_at,created_at').eq('user_id', userId),
+        external_event_links: client.from('external_event_links').select('*').eq('user_id', userId),
+        daily_health_aggregates: client.from('daily_health_aggregates').select('*').eq('user_id', userId),
+        audit_events: client.from('audit_events').select('*').eq('user_id', userId),
+      }
+      const entries = await Promise.all(Object.entries(queries).map(async ([name, query]) => {
+        const result = await query
+        return [name, result] as const
+      }))
+      const failed = entries.find(([, result]) => result.error)
+      if (failed?.[1].error) return failure(failed[1].error)
+      return {
+        ok: true,
+        value: {
+          exportedAt: new Date().toISOString(),
+          userId,
+          data: Object.fromEntries(entries.map(([name, result]) => [name, result.data ?? []])),
+        },
+      }
+    },
+
+    async deleteAccount() {
+      const { error } = await client.functions.invoke('delete-account', { method: 'POST' })
+      if (error) return failure(error)
+      await client.auth.signOut({ scope: 'local' })
+      return ok()
     },
 
     async createTask(userId, input) {
