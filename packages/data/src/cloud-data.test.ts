@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { buildHabits, calculateCurrentStreak, mapTaskRow } from './cloud-data'
+import { buildHabits, calculateCurrentStreak, mapProfileRow, mapTaskRow } from './cloud-data'
 
 describe('cloud data mapping', () => {
+  it('maps user profile preferences without exposing database column names', () => {
+    expect(mapProfileRow({
+      id: 'user-1', display_name: 'Chai', timezone: 'Asia/Bangkok', locale: 'th',
+      gamification_enabled: false, health_ai_consent: true,
+    })).toEqual({
+      id: 'user-1', displayName: 'Chai', timezone: 'Asia/Bangkok', locale: 'th',
+      gamificationEnabled: false, healthAiConsent: true,
+    })
+  })
+
   it('maps scheduled database tasks and excludes unscheduled rows from the calendar model', () => {
     const base = {
       id: 'task-1', user_id: 'user-1', title: 'Plan the day', category: 'planning',
