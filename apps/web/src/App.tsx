@@ -9,6 +9,7 @@ import {
 import { completionRate, pointsForCompletion, type AIProposal, type Habit, type Task } from '@cadentra/domain'
 import { PageHeading } from './components/PageHeading'
 import { CalendarView } from './features/calendar/CalendarView'
+import { TasksView } from './features/tasks/TasksView'
 import { TodayView } from './features/today/TodayView'
 import { useI18n } from './i18n/LocaleProvider'
 import type { MessageKey } from './i18n/messages'
@@ -142,15 +143,6 @@ function App() {
 
 function PlaceholderView({ eyebrow, title, detail }: { eyebrow: string; title: string; detail: string }) {
   return <PageHeading eyebrow={eyebrow} title={title} detail={detail}/>
-}
-
-function TasksView({ tasks, onTask, onAdd }: { tasks: Task[]; onTask: (task: Task) => void; onAdd: () => void }) {
-  const { t } = useI18n()
-  const groups = ['in_progress', 'planned', 'done'] as const
-  const labels = { in_progress: 'กำลังทำ', planned: 'วางแผนแล้ว', done: 'สำเร็จ' }
-  return <><PageHeading eyebrow={t('tasks.eyebrow')} title={t('tasks.title')} detail={t('tasks.detail')} action={<button className="primary" onClick={onAdd}><Plus size={17}/> {t('action.add')}</button>}/>
-    <div className="task-toolbar"><div className="segmented"><button className="active">รายการ</button><button>ลำดับความสำคัญ</button></div><button className="filter-button">ทุกหมวดหมู่ <ChevronDown size={14}/></button></div>
-    <div className="task-groups">{groups.map((group) => <section key={group}><div className="group-heading"><h2>{labels[group]}</h2><span>{tasks.filter(t => t.status === group).length}</span></div>{tasks.filter(t => t.status === group).map(task => <div className="task-row" key={task.id}><button className="check-button" onClick={() => onTask(task)}>{task.status === 'done' ? <Check size={15}/> : <Circle size={15}/>}</button><div><strong>{task.title}</strong><small>{task.category} · {formatTime(task.start)}</small></div><span className={`priority ${task.priority}`}>{task.priority}</span><MoreHorizontal size={17}/></div>)}</section>)}</div></>
 }
 
 function HabitsView({ habits, onHabit }: { habits: Habit[]; onHabit: (habit: Habit) => void }) {
