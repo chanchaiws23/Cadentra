@@ -18,6 +18,7 @@ type PendingMutation = { conflict?: string } & (
   | { id: string; type: 'milestone.status'; milestoneId: string; status: ItemStatus }
   | { id: string; type: 'milestone.delete'; milestoneId: string }
   | { id: string; type: 'task.status'; taskId: string; status: ItemStatus; expectedUpdatedAt?: string }
+  | { id: string; type: 'task.occurrence-status'; taskId: string; localDate: string; status: ItemStatus }
   | { id: string; type: 'task.delete'; taskId: string }
   | { id: string; type: 'task.restore'; taskId: string }
   | { id: string; type: 'habit.create'; input: CreateHabitInput }
@@ -49,7 +50,7 @@ function readJson<T>(storage: StorageAdapter, key: string, fallback: T): T {
 }
 
 function defaultCache(): CachedUserData {
-  return { snapshot: { profile: null, tasks: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0 }, deletedTasks: [] }
+  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0 }, deletedTasks: [] }
 }
 
 export function createOfflineUserDataGateway(
@@ -64,6 +65,7 @@ export function createOfflineUserDataGateway(
     const cache = readJson(storage, cacheKey(userId), defaultCache())
     cache.snapshot.goals ??= []
     cache.snapshot.milestones ??= []
+    cache.snapshot.taskOccurrences ??= []
     cache.deletedTasks ??= []
     return cache
   }
@@ -86,6 +88,7 @@ export function createOfflineUserDataGateway(
           id: mutation.input.entityId!, userId, title: mutation.input.title,
           start: mutation.input.start, end: mutation.input.end,
           category: mutation.input.category ?? 'ทั่วไป', priority: mutation.input.priority ?? 'medium', status: 'planned', goalId: mutation.input.goalId,
+          recurring: Boolean(mutation.input.recurrenceRule), recurrenceRule: mutation.input.recurrenceRule,
         })
         snapshot.tasks.sort((a, b) => a.start.localeCompare(b.start))
         break
@@ -115,6 +118,12 @@ export function createOfflineUserDataGateway(
       case 'task.status': {
         const task = snapshot.tasks.find((entry) => entry.id === mutation.taskId)
         if (task) task.status = mutation.status
+        break
+      }
+      case 'task.occurrence-status': {
+        const existing = snapshot.taskOccurrences.find((entry) => entry.taskId === mutation.taskId && entry.localDate === mutation.localDate)
+        if (existing) existing.status = mutation.status
+        else snapshot.taskOccurrences.push({ taskId: mutation.taskId, localDate: mutation.localDate, status: mutation.status })
         break
       }
       case 'task.delete': {
@@ -173,6 +182,7 @@ export function createOfflineUserDataGateway(
       case 'milestone.status': return remote.setMilestoneStatus(userId, mutation.milestoneId, mutation.status)
       case 'milestone.delete': return remote.softDeleteMilestone(userId, mutation.milestoneId)
       case 'task.status': return remote.setTaskStatus(userId, mutation.taskId, mutation.status, mutation.expectedUpdatedAt)
+      case 'task.occurrence-status': return remote.setTaskOccurrenceStatus(userId, mutation.taskId, mutation.localDate, mutation.status)
       case 'task.delete': return remote.softDeleteTask(userId, mutation.taskId)
       case 'task.restore': return remote.restoreTask(userId, mutation.taskId)
       case 'habit.create': return remote.createHabit(userId, mutation.input)
@@ -260,6 +270,7 @@ export function createOfflineUserDataGateway(
     setMilestoneStatus: (userId, milestoneId, status) => mutate(userId, { id: createId(), type: 'milestone.status', milestoneId, status }),
     softDeleteMilestone: (userId, milestoneId) => mutate(userId, { id: createId(), type: 'milestone.delete', milestoneId }),
     setTaskStatus: (userId, taskId, status, expectedUpdatedAt) => mutate(userId, { id: createId(), type: 'task.status', taskId, status, expectedUpdatedAt }),
+    setTaskOccurrenceStatus: (userId, taskId, localDate, status) => mutate(userId, { id: createId(), type: 'task.occurrence-status', taskId, localDate, status }),
     softDeleteTask: (userId, taskId) => mutate(userId, { id: createId(), type: 'task.delete', taskId }),
     restoreTask: (userId, taskId) => mutate(userId, { id: createId(), type: 'task.restore', taskId }),
     createHabit(userId, input) {

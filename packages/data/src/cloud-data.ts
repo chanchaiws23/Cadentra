@@ -1,10 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Goal, Habit, ItemStatus, Milestone, Priority, Task, UserProfile } from '@cadentra/domain'
+import type { Goal, Habit, ItemStatus, Milestone, Priority, Task, TaskOccurrence, UserProfile } from '@cadentra/domain'
 import { dataError, type DataResult } from './repository'
 
 export interface UserDataSnapshot {
   profile: UserProfile | null
   tasks: Task[]
+  taskOccurrences: TaskOccurrence[]
   habits: Habit[]
   goals: Goal[]
   milestones: Milestone[]
@@ -21,6 +22,7 @@ export interface CreateTaskInput {
   category?: string
   priority?: Priority
   goalId?: string
+  recurrenceRule?: string
 }
 
 export interface CreateGoalInput {
@@ -70,6 +72,7 @@ export interface UserDataGateway {
   setMilestoneStatus(userId: string, milestoneId: string, status: ItemStatus): Promise<DataResult<void>>
   softDeleteMilestone(userId: string, milestoneId: string): Promise<DataResult<void>>
   setTaskStatus(userId: string, taskId: string, status: ItemStatus, expectedUpdatedAt?: string): Promise<DataResult<void>>
+  setTaskOccurrenceStatus(userId: string, taskId: string, localDate: string, status: ItemStatus): Promise<DataResult<void>>
   softDeleteTask(userId: string, taskId: string): Promise<DataResult<void>>
   restoreTask(userId: string, taskId: string): Promise<DataResult<void>>
   createHabit(userId: string, input: CreateHabitInput): Promise<DataResult<void>>
@@ -171,6 +174,7 @@ export function mapTaskRow(row: TaskRow): Task | null {
     status: row.status,
     goalId: row.goal_id ?? undefined,
     recurring: Boolean(row.recurrence_rule),
+    recurrenceRule: row.recurrence_rule ?? undefined,
     updatedAt: row.updated_at,
   }
 }
@@ -238,9 +242,10 @@ function idempotentWrite(error: { message: string; code?: string } | null): Data
 export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataGateway {
   return {
     async load(userId, focusSince, localDate) {
-      const [profile, tasks, goals, milestones, habits, checkIns, points, focusSessions] = await Promise.all([
+      const [profile, tasks, taskOccurrences, goals, milestones, habits, checkIns, points, focusSessions] = await Promise.all([
         client.from('profiles').select('id,display_name,timezone,locale,gamification_enabled,health_ai_consent').eq('id', userId).maybeSingle(),
         client.from('tasks').select('id,user_id,title,starts_at,ends_at,category,priority,status,goal_id,recurrence_rule,updated_at').eq('user_id', userId).is('deleted_at', null).order('starts_at'),
+        client.from('task_occurrences').select('task_id,local_date,status').eq('user_id', userId),
         client.from('goals').select('id,user_id,title,description,target_date,status,updated_at').eq('user_id', userId).is('deleted_at', null).order('created_at'),
         client.from('milestones').select('id,user_id,goal_id,title,target_date,status,sort_order,updated_at').eq('user_id', userId).is('deleted_at', null).order('sort_order'),
         client.from('habits').select('id,user_id,title,cue,target,unit').eq('user_id', userId).is('deleted_at', null).order('created_at'),
@@ -248,13 +253,14 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         client.from('point_transactions').select('amount').eq('user_id', userId),
         client.from('focus_sessions').select('elapsed_seconds').eq('user_id', userId).gte('created_at', focusSince),
       ])
-      const error = profile.error ?? tasks.error ?? goals.error ?? milestones.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error
+      const error = profile.error ?? tasks.error ?? taskOccurrences.error ?? goals.error ?? milestones.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error
       if (error) return failure(error)
       return {
         ok: true,
         value: {
           profile: mapProfileRow(profile.data as ProfileRow | null),
           tasks: (tasks.data as TaskRow[]).map(mapTaskRow).filter((task): task is Task => Boolean(task)),
+          taskOccurrences: (taskOccurrences.data as { task_id: string; local_date: string; status: ItemStatus }[]).map((entry) => ({ taskId: entry.task_id, localDate: entry.local_date, status: entry.status })),
           goals: (goals.data as GoalRow[]).map(mapGoalRow),
           milestones: (milestones.data as MilestoneRow[]).map(mapMilestoneRow),
           habits: buildHabits(habits.data as HabitRow[], checkIns.data as HabitCheckInRow[], localDate),
@@ -283,6 +289,7 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         goals: client.from('goals').select('*').eq('user_id', userId),
         milestones: client.from('milestones').select('*').eq('user_id', userId),
         tasks: client.from('tasks').select('*').eq('user_id', userId),
+        task_occurrences: client.from('task_occurrences').select('*').eq('user_id', userId),
         habits: client.from('habits').select('*').eq('user_id', userId),
         habit_checkins: client.from('habit_checkins').select('*').eq('user_id', userId),
         focus_sessions: client.from('focus_sessions').select('*').eq('user_id', userId),
@@ -328,6 +335,7 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         category: input.category ?? 'ทั่วไป',
         priority: input.priority ?? 'medium',
         goal_id: input.goalId ?? null,
+        recurrence_rule: input.recurrenceRule ?? null,
         idempotency_key: input.idempotencyKey ?? crypto.randomUUID(),
       })
       return idempotentWrite(error)
@@ -376,6 +384,11 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         return { ok: false, error: dataError('conflict', 'งานนี้ถูกแก้ไขจากอุปกรณ์อื่นแล้ว กรุณาเลือกเวอร์ชันที่ต้องการ') }
       }
       return ok()
+    },
+
+    async setTaskOccurrenceStatus(userId, taskId, localDate, status) {
+      const { error } = await client.from('task_occurrences').upsert({ user_id: userId, task_id: taskId, local_date: localDate, status, updated_at: new Date().toISOString() }, { onConflict: 'task_id,local_date' })
+      return error ? failure(error) : ok()
     },
 
     async softDeleteTask(userId, taskId) {

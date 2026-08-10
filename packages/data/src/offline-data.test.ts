@@ -17,6 +17,7 @@ const snapshot: UserDataSnapshot = {
     category: 'work', priority: 'medium', status: 'planned',
     updatedAt: '2026-08-10T00:00:00.000Z',
   }],
+  taskOccurrences: [],
   goals: [],
   milestones: [],
   habits: [{ id: 'habit-1', userId: 'user-1', title: 'Read', cue: '', target: 20, unit: 'minutes', streak: 0, completedDates: [] }],
@@ -38,6 +39,7 @@ function remoteGateway(): UserDataGateway {
     setMilestoneStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
     softDeleteMilestone: vi.fn(async () => ({ ok: true as const, value: undefined })),
     setTaskStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    setTaskOccurrenceStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
     softDeleteTask: vi.fn(async () => ({ ok: true as const, value: undefined })),
     restoreTask: vi.fn(async () => ({ ok: true as const, value: undefined })),
     createHabit: vi.fn(async () => ({ ok: true as const, value: undefined })),
@@ -157,5 +159,21 @@ describe('offline user data gateway', () => {
     await gateway.syncPending?.('user-1')
     expect(remote.createGoal).toHaveBeenCalledWith('user-1', expect.objectContaining({ entityId: 'goal-id-2', idempotencyKey: 'goal-id-1' }))
     expect(remote.createMilestone).toHaveBeenCalledWith('user-1', expect.objectContaining({ goalId: 'goal-id-2', entityId: 'goal-id-4' }))
+  })
+
+  it('queues the status of one recurring occurrence while offline', async () => {
+    let online = false
+    const storage = new MemoryStorage()
+    storage.setItem('cadentra:data:user-1', JSON.stringify({ snapshot, deletedTasks: [] }))
+    const remote = remoteGateway()
+    const gateway = createOfflineUserDataGateway(remote, storage, { isOnline: () => online, createId: () => 'occurrence-mutation' })
+
+    await gateway.setTaskOccurrenceStatus('user-1', 'task-1', '2026-08-10', 'done')
+    const cached = await gateway.load('user-1', '', '2026-08-10')
+    expect(cached.ok && cached.value.taskOccurrences).toEqual([{ taskId: 'task-1', localDate: '2026-08-10', status: 'done' }])
+
+    online = true
+    await gateway.syncPending?.('user-1')
+    expect(remote.setTaskOccurrenceStatus).toHaveBeenCalledWith('user-1', 'task-1', '2026-08-10', 'done')
   })
 })

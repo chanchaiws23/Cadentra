@@ -23,8 +23,19 @@ export interface Task {
   status: ItemStatus
   goalId?: string
   recurring?: boolean
+  recurrenceRule?: string
+  sourceTaskId?: string
+  occurrenceDate?: string
   updatedAt?: string
 }
+
+export interface TaskOccurrence {
+  taskId: string
+  localDate: string
+  status: ItemStatus
+}
+
+export * from './recurrence'
 
 export interface Goal {
   id: string

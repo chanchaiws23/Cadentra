@@ -39,6 +39,10 @@ Then run `supabase/migrations/202608100003_goals_milestones.sql` once. This
 adds retry-safe goal writes and the RLS-protected `milestones` table used by
 the Goals workspace. Run follow-up migrations in filename order.
 
+Run `supabase/migrations/202608100004_task_occurrences.sql` next to enable
+recurring tasks. It stores only per-date status exceptions; Cadentra does not
+pre-create every future task occurrence.
+
 ## 3. Configure authentication URLs
 
 In **Authentication > URL Configuration**, use:

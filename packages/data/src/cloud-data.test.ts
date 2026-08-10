@@ -23,6 +23,11 @@ describe('cloud data mapping', () => {
     })
   })
 
+  it('preserves a recurrence rule without materializing future task rows', () => {
+    const task = mapTaskRow({ id: 'task-2', user_id: 'user-1', title: 'Read', category: 'study', priority: 'medium', status: 'planned', goal_id: null, recurrence_rule: 'FREQ=DAILY', updated_at: '', starts_at: '2026-08-10T01:00:00Z', ends_at: '2026-08-10T02:00:00Z' })
+    expect(task).toMatchObject({ recurring: true, recurrenceRule: 'FREQ=DAILY' })
+  })
+
   it('builds habit completion and current streak from check-ins', () => {
     const habits = buildHabits(
       [{ id: 'habit-1', user_id: 'user-1', title: 'Read', cue: null, target: '20', unit: 'minutes' }],

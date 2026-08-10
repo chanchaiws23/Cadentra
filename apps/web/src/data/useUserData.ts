@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SyncIssue, UserDataGateway, UserDataSnapshot } from '@cadentra/data'
+import { expandRecurringTasks } from '@cadentra/domain'
 import { todayKey } from '../lib/date'
 
-const emptySnapshot: UserDataSnapshot = { profile: null, tasks: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0 }
+const emptySnapshot: UserDataSnapshot = { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0 }
 
 interface UserDataState {
   loading: boolean
@@ -17,6 +18,12 @@ function startOfLocalDay(): string {
   const date = new Date()
   date.setHours(0, 0, 0, 0)
   return date.toISOString()
+}
+
+function shiftDate(localDate: string, days: number) {
+  const date = new Date(`${localDate}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
 }
 
 export function useUserData(gateway: UserDataGateway | null, userId?: string) {
@@ -36,7 +43,9 @@ export function useUserData(gateway: UserDataGateway | null, userId?: string) {
       setState((current) => ({ ...current, loading: false, online: typeof navigator === 'undefined' || navigator.onLine, pendingCount: gateway.pendingCount?.(userId) ?? 0, syncIssues: gateway.syncIssues?.(userId) ?? [], error: result.error.message }))
       return false
     }
-    setState({ loading: false, snapshot: result.value, online: typeof navigator === 'undefined' || navigator.onLine, pendingCount: gateway.pendingCount?.(userId) ?? 0, syncIssues: gateway.syncIssues?.(userId) ?? [] })
+    const timeZone = result.value.profile?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+    const snapshot = { ...result.value, tasks: expandRecurringTasks(result.value.tasks, result.value.taskOccurrences, shiftDate(todayKey, -7), shiftDate(todayKey, 14), timeZone) }
+    setState({ loading: false, snapshot, online: typeof navigator === 'undefined' || navigator.onLine, pendingCount: gateway.pendingCount?.(userId) ?? 0, syncIssues: gateway.syncIssues?.(userId) ?? [] })
     return true
   }, [gateway, userId])
 
