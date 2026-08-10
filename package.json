@@ -1,0 +1,47 @@
+{
+  "name": "cadentra",
+  "version": "0.1.0",
+  "description": "A personal discipline, planning, habit and focus system for Android and the web.",
+  "scripts": {
+    "dev": "npm run dev -w @cadentra/web",
+    "build": "npm run build -w @cadentra/web",
+    "lint": "npm run lint -w @cadentra/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "android:sync": "npm --prefix apps run android:sync",
+    "android:open": "npm --prefix apps run android:open",
+    "check": "npm run typecheck && npm run test && npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chanchaiws23/cadentra.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/chanchaiws23/cadentra/issues"
+  },
+  "homepage": "https://github.com/chanchaiws23/cadentra#readme",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.0",
+    "@capacitor/cli": "8.5.0",
+    "@capacitor/core": "8.5.0"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
+  }
+}

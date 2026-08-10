@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Scan tracked files for common secret formats
+        run: |
+          ! git grep -En '(service_role|sk-[A-Za-z0-9_-]{20,}|client_secret["'"']?\s*[:=]\s*["'"'][^"'"']+)' -- ':!package-lock.json' ':!.github/workflows/ci.yml'
+

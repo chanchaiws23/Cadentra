@@ -1,0 +1,13 @@
+{
+  "name": "Cadentra",
+  "short_name": "Cadentra",
+  "description": "วางแผน สร้างนิสัย และโฟกัสในจังหวะของคุณ",
+  "lang": "th",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f4ee",
+  "theme_color": "#f5f4ee",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

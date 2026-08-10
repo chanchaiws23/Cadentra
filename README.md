@@ -1,0 +1,47 @@
+# Cadentra
+
+A personal discipline, planning, habit and focus system for Android and the web.
+
+Cadentra brings daily planning, time blocking, tasks, goals, habits, focus
+sessions, reflection, insights, and human-approved AI planning into one calm
+workspace. Thai is the default product language and the interface is prepared
+for English localization.
+
+## Status
+
+The repository contains the functional product foundation and an interactive
+local-first web application. Supabase migrations, domain rules, Android runtime
+configuration, CI, and product/security documentation are included. Calendar,
+Health Connect, push delivery, and hosted AI calls require provider credentials
+and production console configuration.
+
+## Start locally
+
+```bash
+npm install
+npm run dev
+```
+
+Run the complete validation suite with `npm run check`.
+
+## Repository layout
+
+- `apps/web` — responsive React application
+- `apps/android` — Capacitor Android runtime
+- `packages/domain` — shared types and discipline rules
+- `packages/data` — Supabase and local persistence adapters
+- `packages/ui` — shared design tokens
+- `supabase` — database migrations and edge functions
+- `docs` — architecture, privacy, and product decisions
+
+## Configuration
+
+Copy `.env.example` to `.env.local` and fill only the values needed locally.
+Never commit credentials. The app automatically uses local browser persistence
+when Supabase is not configured.
+
+## License
+
+This is a public source-visible repository, **not open source**. No rights to
+use, copy, modify, or redistribute the code are granted. See [LICENSE](LICENSE).
+

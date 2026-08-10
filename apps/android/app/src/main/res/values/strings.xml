@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Cadentra</string>
+    <string name="title_activity_main">Cadentra</string>
+    <string name="package_name">com.cadentra.app</string>
+    <string name="custom_url_scheme">com.cadentra.app</string>
+</resources>
