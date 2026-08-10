@@ -4,6 +4,7 @@ export type DataErrorCode =
   | 'unauthorized'
   | 'not_found'
   | 'validation'
+  | 'conflict'
   | 'offline'
   | 'unavailable'
 
@@ -51,7 +52,7 @@ export function dataError(code: DataErrorCode, message: string, cause?: unknown)
   return {
     code,
     message,
-    recoverable: code === 'offline' || code === 'unavailable',
+    recoverable: code === 'offline' || code === 'unavailable' || code === 'conflict',
     cause,
   }
 }

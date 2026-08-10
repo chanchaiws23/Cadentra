@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import {
-  BarChart3, Bell, CalendarDays, ChevronDown, Cloud, CloudOff,
+  AlertTriangle, BarChart3, Bell, CalendarDays, ChevronDown, Cloud, CloudOff,
   Flame, Focus, Gauge, Languages, LayoutList, Menu,
   LogOut, Plus, Search, Settings, Sparkles,
   Target, Trophy, X,
 } from 'lucide-react'
 import { completionRate, pointsForCompletion, type Habit, type Task } from '@cadentra/domain'
-import type { UpdateProfileInput, UserDataGateway } from '@cadentra/data'
+import type { SyncIssue, UpdateProfileInput, UserDataGateway } from '@cadentra/data'
 import { PageHeading } from './components/PageHeading'
 import { AppToaster } from './components/AppToaster'
 import { useAuth } from './auth/AuthContext'
@@ -40,7 +40,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const location = useLocation()
   const navigate = useNavigate()
   const view = pathToView(location.pathname)
-  const { snapshot, loading, error, reload, online, pendingCount } = useUserData(dataGateway, session?.user.id)
+  const { snapshot, loading, error, reload, online, pendingCount, syncIssues } = useUserData(dataGateway, session?.user.id)
   const { profile, tasks, habits, points, focusMinutes } = snapshot
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
@@ -57,8 +57,11 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const toggleTask = async (task: Task) => {
     if (!dataGateway || !session) return
     const completing = task.status !== 'done'
-    const result = await dataGateway.setTaskStatus(session.user.id, task.id, completing ? 'done' : 'planned')
-    if (!result.ok) return toast.error('บันทึกสถานะงานไม่สำเร็จ', { description: result.error.message })
+    const result = await dataGateway.setTaskStatus(session.user.id, task.id, completing ? 'done' : 'planned', task.updatedAt)
+    if (!result.ok) {
+      if (result.error.code === 'conflict') await reload()
+      return toast.error(result.error.code === 'conflict' ? 'พบข้อมูลชนกัน กรุณาเลือกเวอร์ชัน' : 'บันทึกสถานะงานไม่สำเร็จ', { description: result.error.message })
+    }
     const amount = completing ? pointsForCompletion(task.priority) : -pointsForCompletion(task.priority)
     const pointsResult = await dataGateway.recordPoints(session.user.id, 'task', task.id, amount, completing ? 'task_completed' : 'task_reopened')
     if (!pointsResult.ok) toast.warning('สถานะงานถูกบันทึก แต่คะแนนยังไม่อัปเดต')
@@ -168,6 +171,17 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     if (!result.ok) toast.error('ออกจากระบบไม่สำเร็จ', { description: result.message })
   }
 
+  const resolveSyncIssue = async (issue: SyncIssue, resolution: 'local' | 'cloud') => {
+    if (!dataGateway?.resolveSyncIssue || !session) return
+    const result = await dataGateway.resolveSyncIssue(session.user.id, issue.id, resolution)
+    if (!result.ok) {
+      toast.error('แก้ข้อมูลชนกันไม่สำเร็จ', { description: result.error.message })
+      return
+    }
+    await reload()
+    toast.success(resolution === 'local' ? 'ใช้ข้อมูลจากอุปกรณ์นี้แล้ว' : 'ใช้ข้อมูลล่าสุดจากคลาวด์แล้ว')
+  }
+
   const level = Math.floor(points / 100) + 1
   const accountEmail = session?.user.email ?? ''
   const displayName = profile?.displayName || accountEmail.split('@')[0] || ''
@@ -185,7 +199,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
         </nav>
         <div className="sidebar-bottom">
           <div className={online && pendingCount === 0 ? 'sync-status synced' : 'sync-status pending'} role="status">
-            {online && pendingCount === 0 ? <Cloud size={15}/> : <CloudOff size={15}/>}<span>{online ? (pendingCount ? `รอซิงก์ ${pendingCount} รายการ` : 'ซิงก์แล้ว') : `ออฟไลน์${pendingCount ? ` · รอซิงก์ ${pendingCount}` : ''}`}</span>
+            {online && pendingCount === 0 ? <Cloud size={15}/> : <CloudOff size={15}/>}<span>{syncIssues.length ? `ข้อมูลชนกัน ${syncIssues.length} รายการ` : online ? (pendingCount ? `รอซิงก์ ${pendingCount} รายการ` : 'ซิงก์แล้ว') : `ออฟไลน์${pendingCount ? ` · รอซิงก์ ${pendingCount}` : ''}`}</span>
           </div>
           {profile?.gamificationEnabled !== false && <button className="nav-item"><Trophy size={18}/><span>เลเวล {level}</span><em>{points} XP</em></button>}
           <button className={view === 'settings' ? 'nav-item active' : 'nav-item'} onClick={() => navigate(viewPaths.settings)}><Settings size={18}/><span>{t('nav.settings')}</span></button>
@@ -201,6 +215,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
         </header>
 
         <section className="content">
+          {syncIssues[0] && <SyncConflictBanner issue={syncIssues[0]} onResolve={resolveSyncIssue}/>}
           {loading ? <DataLoading/> : error ? <DataLoadError message={error} onRetry={() => void reload()}/> : <Routes>
             <Route path="/" element={<Navigate to={viewPaths.today} replace/>}/>
             <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={displayName} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => toast.info('AI Coach จะเปิดใช้เมื่อ Edge Function พร้อม')} />}/>
@@ -222,6 +237,10 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
       <AppToaster/>
     </div>
   )
+}
+
+function SyncConflictBanner({ issue, onResolve }: { issue: SyncIssue; onResolve: (issue: SyncIssue, resolution: 'local' | 'cloud') => Promise<void> }) {
+  return <div className="mb-6 flex items-start gap-3 rounded-xl border border-[#dcc48f] bg-[#f4ecd9] p-4 text-sm" role="alert"><AlertTriangle className="mt-0.5 shrink-0 text-[#8a6126]" size={18}/><div className="min-w-0 flex-1"><strong className="block">{issue.title}</strong><p className="mt-1 text-xs leading-5 text-muted">{issue.detail} เลือกว่าจะเก็บการเปลี่ยนแปลงจากเครื่องนี้ หรือกลับไปใช้ข้อมูลล่าสุดจาก Supabase</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="primary compact" onClick={() => void onResolve(issue, 'local')}>ใช้ข้อมูลในเครื่อง</button><button type="button" className="secondary" onClick={() => void onResolve(issue, 'cloud')}>ใช้ข้อมูลบนคลาวด์</button></div></div></div>
 }
 
 function PlaceholderView({ eyebrow, title, detail }: { eyebrow: string; title: string; detail: string }) {

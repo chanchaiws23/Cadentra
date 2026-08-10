@@ -15,11 +15,11 @@ describe('cloud data mapping', () => {
   it('maps scheduled database tasks and excludes unscheduled rows from the calendar model', () => {
     const base = {
       id: 'task-1', user_id: 'user-1', title: 'Plan the day', category: 'planning',
-      priority: 'high' as const, status: 'planned' as const, goal_id: null, recurrence_rule: null,
+      priority: 'high' as const, status: 'planned' as const, goal_id: null, recurrence_rule: null, updated_at: '2026-08-10T00:00:00Z',
     }
     expect(mapTaskRow({ ...base, starts_at: null, ends_at: null })).toBeNull()
     expect(mapTaskRow({ ...base, starts_at: '2026-08-10T01:00:00Z', ends_at: '2026-08-10T02:00:00Z' })).toMatchObject({
-      id: 'task-1', userId: 'user-1', start: '2026-08-10T01:00:00Z', recurring: false,
+      id: 'task-1', userId: 'user-1', start: '2026-08-10T01:00:00Z', recurring: false, updatedAt: '2026-08-10T00:00:00Z',
     })
   })
 

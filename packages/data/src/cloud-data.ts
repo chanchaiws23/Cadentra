@@ -43,7 +43,7 @@ export interface UserDataGateway {
   exportAccount(userId: string): Promise<DataResult<AccountExport>>
   deleteAccount(): Promise<DataResult<void>>
   createTask(userId: string, input: CreateTaskInput): Promise<DataResult<void>>
-  setTaskStatus(userId: string, taskId: string, status: ItemStatus): Promise<DataResult<void>>
+  setTaskStatus(userId: string, taskId: string, status: ItemStatus, expectedUpdatedAt?: string): Promise<DataResult<void>>
   softDeleteTask(userId: string, taskId: string): Promise<DataResult<void>>
   restoreTask(userId: string, taskId: string): Promise<DataResult<void>>
   createHabit(userId: string, input: CreateHabitInput): Promise<DataResult<void>>
@@ -52,6 +52,15 @@ export interface UserDataGateway {
   recordFocusSession(userId: string, taskId: string | undefined, plannedMinutes: number, elapsedSeconds: number, idempotencyKey?: string): Promise<DataResult<void>>
   syncPending?(userId: string): Promise<DataResult<{ synced: number; pending: number }>>
   pendingCount?(userId: string): number
+  syncIssues?(userId: string): SyncIssue[]
+  resolveSyncIssue?(userId: string, mutationId: string, resolution: 'local' | 'cloud'): Promise<DataResult<void>>
+}
+
+export interface SyncIssue {
+  id: string
+  kind: 'conflict'
+  title: string
+  detail: string
 }
 
 interface TaskRow {
@@ -65,6 +74,7 @@ interface TaskRow {
   status: ItemStatus
   goal_id: string | null
   recurrence_rule: string | null
+  updated_at: string
 }
 
 interface HabitRow {
@@ -114,6 +124,7 @@ export function mapTaskRow(row: TaskRow): Task | null {
     status: row.status,
     goalId: row.goal_id ?? undefined,
     recurring: Boolean(row.recurrence_rule),
+    updatedAt: row.updated_at,
   }
 }
 
@@ -174,7 +185,7 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
     async load(userId, focusSince, localDate) {
       const [profile, tasks, habits, checkIns, points, focusSessions] = await Promise.all([
         client.from('profiles').select('id,display_name,timezone,locale,gamification_enabled,health_ai_consent').eq('id', userId).maybeSingle(),
-        client.from('tasks').select('id,user_id,title,starts_at,ends_at,category,priority,status,goal_id,recurrence_rule').eq('user_id', userId).is('deleted_at', null).order('starts_at'),
+        client.from('tasks').select('id,user_id,title,starts_at,ends_at,category,priority,status,goal_id,recurrence_rule,updated_at').eq('user_id', userId).is('deleted_at', null).order('starts_at'),
         client.from('habits').select('id,user_id,title,cue,target,unit').eq('user_id', userId).is('deleted_at', null).order('created_at'),
         client.from('habit_checkins').select('habit_id,local_date').eq('user_id', userId).order('local_date'),
         client.from('point_transactions').select('amount').eq('user_id', userId),
@@ -261,9 +272,15 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
       return idempotentWrite(error)
     },
 
-    async setTaskStatus(userId, taskId, status) {
-      const { error } = await client.from('tasks').update({ status, updated_at: new Date().toISOString() }).eq('id', taskId).eq('user_id', userId)
-      return error ? failure(error) : ok()
+    async setTaskStatus(userId, taskId, status, expectedUpdatedAt) {
+      let query = client.from('tasks').update({ status, updated_at: new Date().toISOString() }).eq('id', taskId).eq('user_id', userId)
+      if (expectedUpdatedAt) query = query.eq('updated_at', expectedUpdatedAt)
+      const { data, error } = await query.select('id')
+      if (error) return failure(error)
+      if (expectedUpdatedAt && (!data || data.length === 0)) {
+        return { ok: false, error: dataError('conflict', 'งานนี้ถูกแก้ไขจากอุปกรณ์อื่นแล้ว กรุณาเลือกเวอร์ชันที่ต้องการ') }
+      }
+      return ok()
     },
 
     async softDeleteTask(userId, taskId) {
