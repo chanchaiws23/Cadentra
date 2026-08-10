@@ -21,4 +21,5 @@ also pass through the offline queue instead of changing UI state only. A command
 moves between history stacks only after its inverse succeeds. History is cleared
 when the signed-in account changes, and stale toast actions cannot undo a newer
 command. Create operations join this history only after their gateway contract
-returns the generated entity ID.
+returns the generated entity ID; their inverse is a soft delete and Redo restores
+the same entity instead of creating a duplicate.
