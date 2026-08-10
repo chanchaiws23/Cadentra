@@ -1,0 +1,213 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Habit, ItemStatus, Priority, Task } from '@cadentra/domain'
+import { dataError, type DataResult } from './repository'
+
+export interface UserDataSnapshot {
+  tasks: Task[]
+  habits: Habit[]
+  points: number
+  focusMinutes: number
+}
+
+export interface CreateTaskInput {
+  title: string
+  start: string
+  end: string
+  category?: string
+  priority?: Priority
+}
+
+export interface CreateHabitInput {
+  title: string
+  cue: string
+  target: number
+  unit: string
+}
+
+export interface UserDataGateway {
+  load(userId: string, focusSince: string, localDate: string): Promise<DataResult<UserDataSnapshot>>
+  createTask(userId: string, input: CreateTaskInput): Promise<DataResult<void>>
+  setTaskStatus(userId: string, taskId: string, status: ItemStatus): Promise<DataResult<void>>
+  softDeleteTask(userId: string, taskId: string): Promise<DataResult<void>>
+  restoreTask(userId: string, taskId: string): Promise<DataResult<void>>
+  createHabit(userId: string, input: CreateHabitInput): Promise<DataResult<void>>
+  setHabitCheckIn(userId: string, habitId: string, localDate: string, completed: boolean): Promise<DataResult<void>>
+  recordPoints(userId: string, sourceType: string, sourceId: string, amount: number, reason: string): Promise<DataResult<void>>
+  recordFocusSession(userId: string, taskId: string | undefined, plannedMinutes: number, elapsedSeconds: number): Promise<DataResult<void>>
+}
+
+interface TaskRow {
+  id: string
+  user_id: string
+  title: string
+  starts_at: string | null
+  ends_at: string | null
+  category: string
+  priority: Priority
+  status: ItemStatus
+  goal_id: string | null
+  recurrence_rule: string | null
+}
+
+interface HabitRow {
+  id: string
+  user_id: string
+  title: string
+  cue: string | null
+  target: number | string
+  unit: string
+}
+
+interface HabitCheckInRow {
+  habit_id: string
+  local_date: string
+}
+
+export function mapTaskRow(row: TaskRow): Task | null {
+  if (!row.starts_at || !row.ends_at) return null
+  return {
+    id: row.id,
+    userId: row.user_id,
+    title: row.title,
+    start: row.starts_at,
+    end: row.ends_at,
+    category: row.category,
+    priority: row.priority,
+    status: row.status,
+    goalId: row.goal_id ?? undefined,
+    recurring: Boolean(row.recurrence_rule),
+  }
+}
+
+function dateBefore(localDate: string, days: number): string {
+  const date = new Date(`${localDate}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() - days)
+  return date.toISOString().slice(0, 10)
+}
+
+export function calculateCurrentStreak(completedDates: readonly string[], localDate: string): number {
+  const dates = new Set(completedDates)
+  let cursor = dates.has(localDate) ? localDate : dateBefore(localDate, 1)
+  let streak = 0
+  while (dates.has(cursor)) {
+    streak += 1
+    cursor = dateBefore(cursor, 1)
+  }
+  return streak
+}
+
+export function buildHabits(rows: readonly HabitRow[], checkIns: readonly HabitCheckInRow[], localDate: string): Habit[] {
+  const datesByHabit = new Map<string, string[]>()
+  for (const checkIn of checkIns) {
+    const dates = datesByHabit.get(checkIn.habit_id) ?? []
+    dates.push(checkIn.local_date)
+    datesByHabit.set(checkIn.habit_id, dates)
+  }
+  return rows.map((row) => {
+    const completedDates = [...new Set(datesByHabit.get(row.id) ?? [])].sort()
+    return {
+      id: row.id,
+      userId: row.user_id,
+      title: row.title,
+      cue: row.cue ?? '',
+      target: Number(row.target),
+      unit: row.unit,
+      streak: calculateCurrentStreak(completedDates, localDate),
+      completedDates,
+    }
+  })
+}
+
+function failure(error: { message: string; code?: string } | null): DataResult<never> {
+  const unauthorized = error?.code === '42501' || error?.code === 'PGRST301'
+  return { ok: false, error: dataError(unauthorized ? 'unauthorized' : 'unavailable', error?.message ?? 'Cloud data request failed.', error) }
+}
+
+function ok(): DataResult<void> {
+  return { ok: true, value: undefined }
+}
+
+export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataGateway {
+  return {
+    async load(userId, focusSince, localDate) {
+      const [tasks, habits, checkIns, points, focusSessions] = await Promise.all([
+        client.from('tasks').select('id,user_id,title,starts_at,ends_at,category,priority,status,goal_id,recurrence_rule').eq('user_id', userId).is('deleted_at', null).order('starts_at'),
+        client.from('habits').select('id,user_id,title,cue,target,unit').eq('user_id', userId).is('deleted_at', null).order('created_at'),
+        client.from('habit_checkins').select('habit_id,local_date').eq('user_id', userId).order('local_date'),
+        client.from('point_transactions').select('amount').eq('user_id', userId),
+        client.from('focus_sessions').select('elapsed_seconds').eq('user_id', userId).gte('created_at', focusSince),
+      ])
+      const error = tasks.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error
+      if (error) return failure(error)
+      return {
+        ok: true,
+        value: {
+          tasks: (tasks.data as TaskRow[]).map(mapTaskRow).filter((task): task is Task => Boolean(task)),
+          habits: buildHabits(habits.data as HabitRow[], checkIns.data as HabitCheckInRow[], localDate),
+          points: (points.data as { amount: number }[]).reduce((total, entry) => total + entry.amount, 0),
+          focusMinutes: Math.floor((focusSessions.data as { elapsed_seconds: number }[]).reduce((total, entry) => total + entry.elapsed_seconds, 0) / 60),
+        },
+      }
+    },
+
+    async createTask(userId, input) {
+      const { error } = await client.from('tasks').insert({
+        user_id: userId,
+        title: input.title,
+        starts_at: input.start,
+        ends_at: input.end,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        category: input.category ?? 'ทั่วไป',
+        priority: input.priority ?? 'medium',
+        idempotency_key: crypto.randomUUID(),
+      })
+      return error ? failure(error) : ok()
+    },
+
+    async setTaskStatus(userId, taskId, status) {
+      const { error } = await client.from('tasks').update({ status, updated_at: new Date().toISOString() }).eq('id', taskId).eq('user_id', userId)
+      return error ? failure(error) : ok()
+    },
+
+    async softDeleteTask(userId, taskId) {
+      const { error } = await client.from('tasks').update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', taskId).eq('user_id', userId)
+      return error ? failure(error) : ok()
+    },
+
+    async restoreTask(userId, taskId) {
+      const { error } = await client.from('tasks').update({ deleted_at: null, updated_at: new Date().toISOString() }).eq('id', taskId).eq('user_id', userId)
+      return error ? failure(error) : ok()
+    },
+
+    async createHabit(userId, input) {
+      const { error } = await client.from('habits').insert({ user_id: userId, title: input.title, cue: input.cue || null, target: input.target, unit: input.unit })
+      return error ? failure(error) : ok()
+    },
+
+    async setHabitCheckIn(userId, habitId, localDate, completed) {
+      const query = completed
+        ? client.from('habit_checkins').upsert({ user_id: userId, habit_id: habitId, local_date: localDate, value: 1 }, { onConflict: 'habit_id,local_date' })
+        : client.from('habit_checkins').delete().eq('user_id', userId).eq('habit_id', habitId).eq('local_date', localDate)
+      const { error } = await query
+      return error ? failure(error) : ok()
+    },
+
+    async recordPoints(userId, sourceType, sourceId, amount, reason) {
+      const { error } = await client.from('point_transactions').insert({ user_id: userId, source_type: sourceType, source_id: sourceId, amount, reason })
+      return error ? failure(error) : ok()
+    },
+
+    async recordFocusSession(userId, taskId, plannedMinutes, elapsedSeconds) {
+      const now = new Date().toISOString()
+      const { error } = await client.from('focus_sessions').insert({
+        user_id: userId,
+        task_id: taskId ?? null,
+        planned_minutes: plannedMinutes,
+        elapsed_seconds: elapsedSeconds,
+        started_at: new Date(Date.now() - elapsedSeconds * 1_000).toISOString(),
+        ended_at: now,
+      })
+      return error ? failure(error) : ok()
+    },
+  }
+}

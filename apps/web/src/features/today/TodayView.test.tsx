@@ -25,6 +25,8 @@ describe('TodayView', () => {
           habits={[habit]}
           rate={0}
           completedHabits={0}
+          focusMinutes={0}
+          displayName="chai"
           onTask={vi.fn()}
           onHabit={vi.fn()}
           onCoach={vi.fn()}
@@ -33,7 +35,7 @@ describe('TodayView', () => {
     )
 
     expect(screen.getByRole('heading', { name: 'ตารางวันนี้' })).toBeTruthy()
-    expect(screen.getByText('Deep work')).toBeTruthy()
+    expect(screen.getAllByText('Deep work')).toHaveLength(2)
     expect(screen.getAllByText('0/1')).toHaveLength(2)
   })
 })

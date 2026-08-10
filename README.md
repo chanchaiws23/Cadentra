@@ -44,8 +44,8 @@ owner promotes `develop` to `main`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Configuration
 
 Copy `.env.example` to `.env.local` and fill only the values needed locally.
-Never commit credentials. The app automatically uses local browser persistence
-when Supabase is not configured.
+Never commit credentials. The app fails closed when Supabase is not configured
+so sample data can never be mistaken for the user's cloud data.
 
 For first-time cloud setup, follow the [Supabase setup guide](docs/setup/supabase.md).
 
