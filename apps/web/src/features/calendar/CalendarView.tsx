@@ -1,4 +1,5 @@
-import type { Task } from '@cadentra/domain'
+import { AlertTriangle } from 'lucide-react'
+import { conflictingTaskIds, type Task } from '@cadentra/domain'
 import { PageHeading } from '../../components/PageHeading'
 import { useI18n } from '../../i18n/LocaleProvider'
 import { formatTime, localDateKey } from '../../lib/date'
@@ -26,6 +27,7 @@ export function CalendarView({ tasks, onTask }: CalendarViewProps) {
   const weekDays = currentWorkWeek()
   const today = localDateKey(new Date())
   const visibleTasks = tasks.filter((task) => weekDays.some((day) => day.key === localDateKey(task.start)))
+  const conflictIds = conflictingTaskIds(visibleTasks)
   const weekLabel = `${new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short' }).format(weekDays[0].date)} – ${new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short' }).format(weekDays[4].date)}`
 
   return (
@@ -53,11 +55,11 @@ export function CalendarView({ tasks, onTask }: CalendarViewProps) {
           return (
             <button
               key={task.id}
-              className={`calendar-block ${task.status}`}
+              className={`calendar-block ${task.status} ${conflictIds.has(task.id) ? 'border-l-[#b66a3c]! bg-[#f2e4db]! text-[#8f4f2e]!' : ''}`}
               onClick={() => onTask(task)}
               style={{ gridColumn: dayIndex + 2, gridRow: `${Math.max(3, start.getHours() - 8 + 3)} / span ${Math.max(1, Math.round(duration))}` }}
             >
-              {task.title}<small>{formatTime(task.start)}</small>
+              <span className="flex items-center gap-1">{conflictIds.has(task.id) && <AlertTriangle size={10} aria-label="เวลาชน"/>}{task.title}</span><small>{formatTime(task.start)}</small>
             </button>
           )
         })}
