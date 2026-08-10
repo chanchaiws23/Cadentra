@@ -1,1 +1,37 @@
-html{background:#f5f4ee}body{min-height:100vh}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #246b5044;outline-offset:2px}::selection{background:#cfe2d7;color:#183f30}
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'DM Sans', 'Noto Sans Thai', sans-serif;
+  --font-display: Georgia, 'Noto Sans Thai', serif;
+
+  --color-ink: #22251f;
+  --color-muted: #74786f;
+  --color-paper: #f5f4ee;
+  --color-surface: #fbfaf6;
+  --color-accent: #246b50;
+  --color-accent-soft: #e1eee7;
+  --color-line: #dedfd7;
+  --color-warm: #b66a3c;
+}
+
+@layer base {
+  html {
+    background: var(--color-paper);
+  }
+
+  body {
+    min-height: 100vh;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--color-accent) 27%, transparent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: #cfe2d7;
+    color: #183f30;
+  }
+}
