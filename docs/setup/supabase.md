@@ -30,6 +30,11 @@ The migration enables Row Level Security for every user-owned table. It also
 creates a private trigger function that inserts a matching `profiles` row when
 a user signs up.
 
+If the initial schema was already installed, also run the complete contents of
+`supabase/migrations/202608100002_offline_idempotency.sql` once. This adds the
+retry keys used by the offline mutation queue to prevent duplicate habits,
+point transactions, and focus sessions after reconnecting.
+
 ## 3. Configure authentication URLs
 
 In **Authentication > URL Configuration**, use:
