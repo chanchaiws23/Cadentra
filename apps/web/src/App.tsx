@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import {
-  BarChart3, Bell, Bot, CalendarDays, Check, CheckCircle2, ChevronDown,
-  Circle, Flame, Focus, Gauge, Languages, LayoutList, Menu, MoreHorizontal,
+  BarChart3, Bell, Bot, CalendarDays, CheckCircle2, ChevronDown,
+  Flame, Focus, Gauge, Languages, LayoutList, Menu, MoreHorizontal,
   Pause, Play, Plus, RotateCcw, Search, Settings, Sparkles, TimerReset,
   Target, Trophy, X,
 } from 'lucide-react'
 import { completionRate, pointsForCompletion, type AIProposal, type Habit, type Task } from '@cadentra/domain'
 import { PageHeading } from './components/PageHeading'
 import { CalendarView } from './features/calendar/CalendarView'
+import { HabitsView } from './features/habits/HabitsView'
 import { TasksView } from './features/tasks/TasksView'
 import { TodayView } from './features/today/TodayView'
 import { useI18n } from './i18n/LocaleProvider'
@@ -143,13 +144,6 @@ function App() {
 
 function PlaceholderView({ eyebrow, title, detail }: { eyebrow: string; title: string; detail: string }) {
   return <PageHeading eyebrow={eyebrow} title={title} detail={detail}/>
-}
-
-function HabitsView({ habits, onHabit }: { habits: Habit[]; onHabit: (habit: Habit) => void }) {
-  const { t } = useI18n()
-  return <><PageHeading eyebrow={t('habits.eyebrow')} title={t('habits.title')} detail={t('habits.detail')} action={<button className="primary"><Plus size={17}/> {t('action.add')}</button>}/>
-    <div className="habit-hero"><div><span>ความสม่ำเสมอสัปดาห์นี้</span><strong>82%</strong><p>ดีขึ้น 9% จากสัปดาห์ก่อน</p></div><div className="week-dots">{['จ','อ','พ','พฤ','ศ','ส','อา'].map((day, i) => <span className={i < 5 ? 'filled' : ''} key={day}>{day}</span>)}</div></div>
-    <div className="habit-table"><div className="habit-table-head"><span>นิสัย</span><span>เป้าหมาย</span><span>Streak</span><span>วันนี้</span></div>{habits.map(habit => <div className="habit-table-row" key={habit.id}><div><span className="habit-symbol"><Flame size={18}/></span><div><strong>{habit.title}</strong><small>{habit.cue}</small></div></div><span>{habit.target} {habit.unit}</span><span><Flame size={14}/> {habit.streak} วัน</span><button onClick={() => onHabit(habit)} className={habit.completedDates.includes(todayKey) ? 'done' : ''}>{habit.completedDates.includes(todayKey) ? <Check/> : <Circle/>}</button></div>)}</div></>
 }
 
 function FocusView({ tasks, notify }: { tasks: Task[]; notify: (message: string) => void }) {
