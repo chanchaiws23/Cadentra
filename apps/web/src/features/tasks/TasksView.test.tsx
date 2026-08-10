@@ -12,15 +12,19 @@ const task: Task = {
 }
 
 describe('TasksView', () => {
-  it('supports adding and selecting a task', () => {
+  it('supports adding, selecting, and deleting a task after confirmation', () => {
     const onTask = vi.fn()
+    const onDelete = vi.fn()
     const onAdd = vi.fn()
-    render(<LocaleProvider><TasksView tasks={[task]} onTask={onTask} onAdd={onAdd}/></LocaleProvider>)
+    render(<LocaleProvider><TasksView tasks={[task]} onTask={onTask} onDelete={onDelete} onAdd={onAdd}/></LocaleProvider>)
 
     fireEvent.click(screen.getByRole('button', { name: 'เพิ่ม' }))
     fireEvent.click(screen.getByRole('button', { name: `เปลี่ยนสถานะ ${task.title}` }))
+    fireEvent.click(screen.getByRole('button', { name: `ลบงาน ${task.title}` }))
+    fireEvent.click(screen.getByRole('button', { name: 'ลบงาน' }))
 
     expect(onAdd).toHaveBeenCalledOnce()
     expect(onTask).toHaveBeenCalledWith(task)
+    expect(onDelete).toHaveBeenCalledWith(task)
   })
 })
