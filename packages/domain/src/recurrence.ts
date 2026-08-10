@@ -36,3 +36,18 @@ export function expandRecurringTasks(tasks: readonly Task[], occurrences: readon
   }
   return expanded.sort((a, b) => a.start.localeCompare(b.start))
 }
+
+export function collapseRecurringTasks(tasks: readonly Task[], referenceDate: string): Task[] {
+  const groups = new Map<string, Task[]>()
+  for (const task of tasks) {
+    const key = task.sourceTaskId ?? task.id
+    groups.set(key, [...(groups.get(key) ?? []), task])
+  }
+  return [...groups.values()].map((group) => {
+    if (group.length === 1) return group[0]
+    return [...group].sort((a, b) => {
+      const score = (task: Task) => task.occurrenceDate === referenceDate ? -1 : task.occurrenceDate && task.occurrenceDate > referenceDate ? 0 : 1
+      return score(a) - score(b) || (a.occurrenceDate ?? '').localeCompare(b.occurrenceDate ?? '')
+    })[0]
+  }).sort((a, b) => a.start.localeCompare(b.start))
+}

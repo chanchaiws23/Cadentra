@@ -7,7 +7,7 @@ import {
   LogOut, Plus, Search, Settings, Sparkles,
   Target, Trophy, X,
 } from 'lucide-react'
-import { completionRate, pointsForCompletion, type Goal, type Habit, type Milestone, type Task } from '@cadentra/domain'
+import { collapseRecurringTasks, completionRate, pointsForCompletion, type Goal, type Habit, type Milestone, type Task } from '@cadentra/domain'
 import type { SyncIssue, UpdateProfileInput, UserDataGateway } from '@cadentra/data'
 import { PageHeading } from './components/PageHeading'
 import { AppToaster } from './components/AppToaster'
@@ -47,6 +47,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const [addOpen, setAddOpen] = useState(false)
   const [habitAddOpen, setHabitAddOpen] = useState(false)
   const todayTasks = tasks.filter((task) => localDateKey(task.start) === todayKey)
+  const managedTasks = collapseRecurringTasks(tasks, todayKey)
   const rate = completionRate(todayTasks)
   const completedHabits = habits.filter((habit) => habit.completedDates.includes(todayKey)).length
   const notify = useCallback((message: string) => { toast.success(message) }, [])
@@ -266,11 +267,11 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
             <Route path="/" element={<Navigate to={viewPaths.today} replace/>}/>
             <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={displayName} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => toast.info('AI Coach จะเปิดใช้เมื่อ Edge Function พร้อม')} />}/>
             <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} onTask={toggleTask}/>}/>
-            <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
-            <Route path={viewPaths.goals} element={<GoalsView goals={goals} milestones={milestones} tasks={tasks} onCreateGoal={createGoal} onToggleGoal={toggleGoal} onDeleteGoal={deleteGoal} onCreateMilestone={createMilestone} onToggleMilestone={toggleMilestone} onDeleteMilestone={deleteMilestone}/>}/>
+            <Route path={viewPaths.tasks} element={<TasksView tasks={managedTasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
+            <Route path={viewPaths.goals} element={<GoalsView goals={goals} milestones={milestones} tasks={managedTasks} onCreateGoal={createGoal} onToggleGoal={toggleGoal} onDeleteGoal={deleteGoal} onCreateMilestone={createMilestone} onToggleMilestone={toggleMilestone} onDeleteMilestone={deleteMilestone}/>}/>
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabit={toggleHabit} onAdd={() => setHabitAddOpen(true)}/>}/>
-            <Route path={viewPaths.focus} element={<FocusView tasks={tasks} notify={notify} onComplete={recordFocus}/>}/>
-            <Route path={viewPaths.insights} element={<InsightsView tasks={tasks} habits={habits} points={points} focusMinutes={focusMinutes}/>}/>
+            <Route path={viewPaths.focus} element={<FocusView tasks={managedTasks} notify={notify} onComplete={recordFocus}/>}/>
+            <Route path={viewPaths.insights} element={<InsightsView tasks={managedTasks} habits={habits} points={points} focusMinutes={focusMinutes}/>}/>
             <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} onSave={saveProfile} onExport={exportAccount} onDelete={deleteAccount}/>}/>
             <Route path="*" element={<Navigate to={viewPaths.today} replace/>}/>
           </Routes>}
