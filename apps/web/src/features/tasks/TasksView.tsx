@@ -1,5 +1,6 @@
-import { Check, ChevronDown, Circle, MoreHorizontal, Plus } from 'lucide-react'
+import { Check, ChevronDown, Circle, Plus, Trash2 } from 'lucide-react'
 import type { ItemStatus, Task } from '@cadentra/domain'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { PageHeading } from '../../components/PageHeading'
 import { useI18n } from '../../i18n/LocaleProvider'
 import { formatTime } from '../../lib/date'
@@ -7,6 +8,7 @@ import { formatTime } from '../../lib/date'
 interface TasksViewProps {
   tasks: Task[]
   onTask: (task: Task) => void
+  onDelete: (task: Task) => void
   onAdd: () => void
 }
 
@@ -17,7 +19,7 @@ const groupLabels: Partial<Record<ItemStatus, string>> = {
   done: 'สำเร็จ',
 }
 
-export function TasksView({ tasks, onTask, onAdd }: TasksViewProps) {
+export function TasksView({ tasks, onTask, onDelete, onAdd }: TasksViewProps) {
   const { t } = useI18n()
 
   return (
@@ -45,7 +47,14 @@ export function TasksView({ tasks, onTask, onAdd }: TasksViewProps) {
                   </button>
                   <div><strong>{task.title}</strong><small>{task.category} · {formatTime(task.start)}</small></div>
                   <span className={`priority ${task.priority}`}>{task.priority}</span>
-                  <MoreHorizontal size={17}/>
+                  <ConfirmDialog
+                    trigger={<button type="button" className="grid size-8 place-items-center rounded-lg text-muted transition-colors hover:bg-[#f1e5e1] hover:text-[#9b493f]" aria-label={`ลบงาน ${task.title}`}><Trash2 size={15}/></button>}
+                    title="ลบงานนี้หรือไม่"
+                    description={`“${task.title}” จะถูกนำออกจากตาราง คุณสามารถกดเลิกทำจากข้อความแจ้งเตือนได้`}
+                    confirmLabel="ลบงาน"
+                    tone="danger"
+                    onConfirm={() => onDelete(task)}
+                  />
                 </div>
               ))}
             </section>

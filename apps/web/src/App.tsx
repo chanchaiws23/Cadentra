@@ -97,6 +97,23 @@ function App() {
     setAddOpen(false); notify('เพิ่มลงในวันนี้แล้ว')
   }
 
+  const deleteTask = useCallback((task: Task) => {
+    const originalIndex = tasks.findIndex((item) => item.id === task.id)
+    setTasks((items) => items.filter((item) => item.id !== task.id))
+    toast.success('ลบงานแล้ว', {
+      description: task.title,
+      action: {
+        label: 'เลิกทำ',
+        onClick: () => setTasks((items) => {
+          if (items.some((item) => item.id === task.id)) return items
+          const restored = [...items]
+          restored.splice(Math.min(Math.max(originalIndex, 0), restored.length), 0, task)
+          return restored
+        }),
+      },
+    })
+  }, [tasks])
+
   return (
     <div className="app-shell">
       <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
@@ -127,7 +144,7 @@ function App() {
             <Route path="/" element={<Navigate to={viewPaths.today} replace/>}/>
             <Route path={viewPaths.today} element={<TodayView tasks={tasks} habits={habits} rate={rate} completedHabits={completedHabits} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => setCoachOpen(true)} />}/>
             <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} onTask={toggleTask}/>}/>
-            <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onAdd={() => setAddOpen(true)}/>}/>
+            <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
             <Route path={viewPaths.goals} element={<PlaceholderView eyebrow="เป้าหมายระยะยาว" title="เป้าหมาย" detail="เชื่อมสิ่งที่อยากเปลี่ยนให้เป็น Milestone งาน และเวลาในปฏิทิน"/>}/>
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabit={toggleHabit}/>}/>
             <Route path={viewPaths.focus} element={<FocusView tasks={tasks} notify={notify}/>}/>
