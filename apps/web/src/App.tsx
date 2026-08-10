@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import {
-  BarChart3, Bell, CalendarDays, ChevronDown,
+  BarChart3, Bell, CalendarDays, ChevronDown, Cloud, CloudOff,
   Flame, Focus, Gauge, Languages, LayoutList, Menu,
   LogOut, Plus, Search, Settings, Sparkles,
   Target, Trophy, X,
@@ -40,7 +40,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const location = useLocation()
   const navigate = useNavigate()
   const view = pathToView(location.pathname)
-  const { snapshot, loading, error, reload } = useUserData(dataGateway, session?.user.id)
+  const { snapshot, loading, error, reload, online, pendingCount } = useUserData(dataGateway, session?.user.id)
   const { profile, tasks, habits, points, focusMinutes } = snapshot
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
@@ -184,6 +184,9 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <div className={online && pendingCount === 0 ? 'sync-status synced' : 'sync-status pending'} role="status">
+            {online && pendingCount === 0 ? <Cloud size={15}/> : <CloudOff size={15}/>}<span>{online ? (pendingCount ? `รอซิงก์ ${pendingCount} รายการ` : 'ซิงก์แล้ว') : `ออฟไลน์${pendingCount ? ` · รอซิงก์ ${pendingCount}` : ''}`}</span>
+          </div>
           {profile?.gamificationEnabled !== false && <button className="nav-item"><Trophy size={18}/><span>เลเวล {level}</span><em>{points} XP</em></button>}
           <button className={view === 'settings' ? 'nav-item active' : 'nav-item'} onClick={() => navigate(viewPaths.settings)}><Settings size={18}/><span>{t('nav.settings')}</span></button>
           <div className="profile"><div className="avatar">{displayName.slice(0, 1).toUpperCase()}</div><div><strong>{displayName}</strong><small>{accountEmail}</small></div><button type="button" className="grid size-8 place-items-center rounded-lg text-muted hover:bg-[#e3e2da] hover:text-ink" onClick={() => void handleSignOut()} aria-label="ออกจากระบบ"><LogOut size={16}/></button></div>

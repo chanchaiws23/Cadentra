@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
-import { createCadentraClient, createSupabaseAuthGateway, createSupabaseUserDataGateway } from '@cadentra/data'
+import { createCadentraClient, createOfflineUserDataGateway, createSupabaseAuthGateway, createSupabaseUserDataGateway } from '@cadentra/data'
 import { AuthProvider } from './auth/AuthProvider.tsx'
 import { AppErrorBoundary } from './components/AppErrorBoundary.tsx'
 import { environment } from './config/environment.ts'
@@ -11,7 +11,8 @@ import App from './App.tsx'
 
 const supabase = createCadentraClient(environment.supabaseUrl, environment.supabaseAnonKey)
 const authGateway = supabase ? createSupabaseAuthGateway(supabase) : null
-const dataGateway = supabase ? createSupabaseUserDataGateway(supabase) : null
+const remoteDataGateway = supabase ? createSupabaseUserDataGateway(supabase) : null
+const dataGateway = remoteDataGateway ? createOfflineUserDataGateway(remoteDataGateway, window.localStorage) : null
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

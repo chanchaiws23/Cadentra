@@ -11,6 +11,8 @@ export interface UserDataSnapshot {
 }
 
 export interface CreateTaskInput {
+  entityId?: string
+  idempotencyKey?: string
   title: string
   start: string
   end: string
@@ -19,6 +21,8 @@ export interface CreateTaskInput {
 }
 
 export interface CreateHabitInput {
+  entityId?: string
+  idempotencyKey?: string
   title: string
   cue: string
   target: number
@@ -44,8 +48,10 @@ export interface UserDataGateway {
   restoreTask(userId: string, taskId: string): Promise<DataResult<void>>
   createHabit(userId: string, input: CreateHabitInput): Promise<DataResult<void>>
   setHabitCheckIn(userId: string, habitId: string, localDate: string, completed: boolean): Promise<DataResult<void>>
-  recordPoints(userId: string, sourceType: string, sourceId: string, amount: number, reason: string): Promise<DataResult<void>>
-  recordFocusSession(userId: string, taskId: string | undefined, plannedMinutes: number, elapsedSeconds: number): Promise<DataResult<void>>
+  recordPoints(userId: string, sourceType: string, sourceId: string, amount: number, reason: string, idempotencyKey?: string): Promise<DataResult<void>>
+  recordFocusSession(userId: string, taskId: string | undefined, plannedMinutes: number, elapsedSeconds: number, idempotencyKey?: string): Promise<DataResult<void>>
+  syncPending?(userId: string): Promise<DataResult<{ synced: number; pending: number }>>
+  pendingCount?(userId: string): number
 }
 
 interface TaskRow {
@@ -159,6 +165,10 @@ function ok(): DataResult<void> {
   return { ok: true, value: undefined }
 }
 
+function idempotentWrite(error: { message: string; code?: string } | null): DataResult<void> {
+  return !error || error.code === '23505' ? ok() : failure(error)
+}
+
 export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataGateway {
   return {
     async load(userId, focusSince, localDate) {
@@ -238,6 +248,7 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
 
     async createTask(userId, input) {
       const { error } = await client.from('tasks').insert({
+        id: input.entityId,
         user_id: userId,
         title: input.title,
         starts_at: input.start,
@@ -245,9 +256,9 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         category: input.category ?? 'ทั่วไป',
         priority: input.priority ?? 'medium',
-        idempotency_key: crypto.randomUUID(),
+        idempotency_key: input.idempotencyKey ?? crypto.randomUUID(),
       })
-      return error ? failure(error) : ok()
+      return idempotentWrite(error)
     },
 
     async setTaskStatus(userId, taskId, status) {
@@ -266,8 +277,8 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
     },
 
     async createHabit(userId, input) {
-      const { error } = await client.from('habits').insert({ user_id: userId, title: input.title, cue: input.cue || null, target: input.target, unit: input.unit })
-      return error ? failure(error) : ok()
+      const { error } = await client.from('habits').insert({ id: input.entityId, user_id: userId, title: input.title, cue: input.cue || null, target: input.target, unit: input.unit, idempotency_key: input.idempotencyKey })
+      return idempotentWrite(error)
     },
 
     async setHabitCheckIn(userId, habitId, localDate, completed) {
@@ -278,12 +289,12 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
       return error ? failure(error) : ok()
     },
 
-    async recordPoints(userId, sourceType, sourceId, amount, reason) {
-      const { error } = await client.from('point_transactions').insert({ user_id: userId, source_type: sourceType, source_id: sourceId, amount, reason })
-      return error ? failure(error) : ok()
+    async recordPoints(userId, sourceType, sourceId, amount, reason, idempotencyKey) {
+      const { error } = await client.from('point_transactions').insert({ user_id: userId, source_type: sourceType, source_id: sourceId, amount, reason, idempotency_key: idempotencyKey })
+      return idempotentWrite(error)
     },
 
-    async recordFocusSession(userId, taskId, plannedMinutes, elapsedSeconds) {
+    async recordFocusSession(userId, taskId, plannedMinutes, elapsedSeconds, idempotencyKey) {
       const now = new Date().toISOString()
       const { error } = await client.from('focus_sessions').insert({
         user_id: userId,
@@ -292,8 +303,9 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         elapsed_seconds: elapsedSeconds,
         started_at: new Date(Date.now() - elapsedSeconds * 1_000).toISOString(),
         ended_at: now,
+        idempotency_key: idempotencyKey,
       })
-      return error ? failure(error) : ok()
+      return idempotentWrite(error)
     },
   }
 }
