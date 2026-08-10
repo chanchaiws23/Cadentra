@@ -38,7 +38,7 @@ describe('TasksView', () => {
     expect(screen.getByRole('heading', { name: 'งานประจำ' })).toBeTruthy()
     expect(screen.getAllByText('เล่นเกม')).toHaveLength(1)
     expect(screen.getByText(/จ\.–ศ\. ·/)).toBeTruthy()
-    expect(screen.getByLabelText('ตารางสัปดาห์ของ เล่นเกม').children).toHaveLength(5)
+    expect(screen.getByLabelText('ตารางสัปดาห์ของ เล่นเกม').querySelectorAll('[aria-label]')).toHaveLength(5)
 
     fireEvent.click(screen.getByRole('button', { name: 'เปลี่ยนสถานะวันนี้ เล่นเกม' }))
     expect(onTask).toHaveBeenCalledWith(expect.objectContaining({ sourceTaskId: 'series-1', occurrenceDate: todayKey }))
@@ -55,6 +55,20 @@ describe('TasksView', () => {
     expect(screen.getByRole('alert').textContent).toContain('พบงานประจำที่เหมือนกัน 2 ชุด')
     expect(screen.getAllByText('เล่นเกม')).toHaveLength(2)
     expect(screen.getAllByText('ซ้ำ 2 ชุด')).toHaveLength(2)
+  })
+
+  it('switches between open and completed one-time tasks', () => {
+    const completedTask = { ...task, id: 'task-2', title: 'ส่งรายงาน', status: 'done' as const }
+
+    render(<LocaleProvider><TasksView tasks={[task, completedTask]} onTask={vi.fn()} onDelete={vi.fn()} onAdd={vi.fn()}/></LocaleProvider>)
+
+    expect(screen.getByText(task.title)).toBeTruthy()
+    expect(screen.queryByText(completedTask.title)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /เสร็จแล้ว/ }))
+
+    expect(screen.queryByText(task.title)).toBeNull()
+    expect(screen.getByText(completedTask.title)).toBeTruthy()
   })
 })
 
