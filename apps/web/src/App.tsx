@@ -4,12 +4,13 @@ import { toast } from 'sonner'
 import {
   BarChart3, Bell, Bot, CalendarDays, CheckCircle2, ChevronDown,
   Flame, Focus, Gauge, Languages, LayoutList, Menu, MoreHorizontal,
-  Plus, RotateCcw, Search, Settings, Sparkles,
+  LogOut, Plus, RotateCcw, Search, Settings, Sparkles,
   Target, Trophy, X,
 } from 'lucide-react'
 import { completionRate, pointsForCompletion, type AIProposal, type Habit, type Task } from '@cadentra/domain'
 import { PageHeading } from './components/PageHeading'
 import { AppToaster } from './components/AppToaster'
+import { useAuth } from './auth/AuthContext'
 import { CalendarView } from './features/calendar/CalendarView'
 import { FocusView } from './features/focus/FocusView'
 import { HabitsView } from './features/habits/HabitsView'
@@ -19,7 +20,6 @@ import { useI18n } from './i18n/LocaleProvider'
 import type { MessageKey } from './i18n/messages'
 import { formatTime, todayKey } from './lib/date'
 import { pathToView, viewPaths, type View } from './routing'
-import './App.css'
 
 const at = (hour: number, minute = 0) => {
   const date = new Date(); date.setHours(hour, minute, 0, 0); return date.toISOString()
@@ -50,6 +50,7 @@ const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] 
 ]
 
 function App() {
+  const { mode: authMode, session, signOut } = useAuth()
   const { locale, setLocale, t } = useI18n()
   const location = useLocation()
   const navigate = useNavigate()
@@ -114,6 +115,11 @@ function App() {
     })
   }, [tasks])
 
+  const handleSignOut = async () => {
+    const result = await signOut()
+    if (!result.ok) toast.error('ออกจากระบบไม่สำเร็จ', { description: result.message })
+  }
+
   return (
     <div className="app-shell">
       <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
@@ -128,7 +134,7 @@ function App() {
         <div className="sidebar-bottom">
           <button className="nav-item"><Trophy size={18}/><span>เลเวล 4</span><em>{points} XP</em></button>
           <button className={view === 'settings' ? 'nav-item active' : 'nav-item'} onClick={() => navigate(viewPaths.settings)}><Settings size={18}/><span>{t('nav.settings')}</span></button>
-          <div className="profile"><div className="avatar">ช</div><div><strong>ชัย</strong><small>ซิงก์ในเครื่อง</small></div><MoreHorizontal size={18}/></div>
+          <div className="profile"><div className="avatar">{authMode === 'cloud' ? session?.user.email.slice(0, 1).toUpperCase() : 'ช'}</div><div><strong>{authMode === 'cloud' ? session?.user.email.split('@')[0] : 'ชัย'}</strong><small>{authMode === 'cloud' ? session?.user.email : 'ซิงก์ในเครื่อง'}</small></div>{authMode === 'cloud' ? <button type="button" className="grid size-8 place-items-center rounded-lg text-muted hover:bg-[#e3e2da] hover:text-ink" onClick={() => void handleSignOut()} aria-label="ออกจากระบบ"><LogOut size={16}/></button> : <MoreHorizontal size={18}/>}</div>
         </div>
       </aside>
 
