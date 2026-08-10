@@ -13,7 +13,7 @@ const habit: Habit = {
 describe('HabitsView', () => {
   it('renders habit progress and reports a check-in', () => {
     const onHabit = vi.fn()
-    render(<LocaleProvider><HabitsView habits={[habit]} onHabit={onHabit}/></LocaleProvider>)
+    render(<LocaleProvider><HabitsView habits={[habit]} onHabit={onHabit} onAdd={vi.fn()}/></LocaleProvider>)
 
     expect(screen.getByRole('heading', { name: 'นิสัยของฉัน' })).toBeTruthy()
     expect(screen.getByText('3 วัน')).toBeTruthy()

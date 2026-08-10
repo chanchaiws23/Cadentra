@@ -35,6 +35,7 @@ export function TasksView({ tasks, onTask, onDelete, onAdd }: TasksViewProps) {
         <button className="filter-button">ทุกหมวดหมู่ <ChevronDown size={14}/></button>
       </div>
       <div className="task-groups">
+        {!tasks.length && <div className="grid min-h-48 place-items-center text-sm text-muted">ยังไม่มีงาน กด “เพิ่ม” เพื่อสร้างงานแรก</div>}
         {groups.map((group) => {
           const groupTasks = tasks.filter((task) => task.status === group)
           return (

@@ -9,10 +9,6 @@ interface AuthState {
   initializationError?: string
 }
 
-const localSession: AuthSession = {
-  user: { id: 'demo', email: 'local@cadentra.app' },
-}
-
 const unavailable = async <T,>(): Promise<AuthResult<T>> => ({
   ok: false,
   message: 'Cloud authentication is unavailable in local mode.',
@@ -22,7 +18,7 @@ export function AuthProvider({ gateway, children }: { gateway: AuthGateway | nul
   const mode: AuthMode = gateway ? 'cloud' : 'local'
   const [state, setState] = useState<AuthState>(() => ({
     loading: Boolean(gateway),
-    session: gateway ? null : localSession,
+    session: null,
   }))
 
   useEffect(() => {
@@ -72,6 +68,7 @@ export function AuthProvider({ gateway, children }: { gateway: AuthGateway | nul
       : unavailable,
   }), [gateway, mode, state.session])
 
+  if (!gateway) return <AuthConfigurationRequired/>
   if (state.loading) return <AuthLoading/>
   if (state.initializationError) return <AuthInitializationError message={state.initializationError}/>
 
@@ -79,6 +76,18 @@ export function AuthProvider({ gateway, children }: { gateway: AuthGateway | nul
     <AuthContext.Provider value={value}>
       {mode === 'cloud' && !state.session ? <AuthView/> : children}
     </AuthContext.Provider>
+  )
+}
+
+function AuthConfigurationRequired() {
+  return (
+    <main className="grid min-h-dvh place-items-center bg-paper px-6 text-ink" role="alert">
+      <div className="max-w-md text-center">
+        <p className="text-[11px] font-bold tracking-[0.13em] text-[#9b493f] uppercase">ต้องตั้งค่าระบบ Cloud</p>
+        <h1 className="font-display mt-2 text-3xl">ยังเชื่อมต่อ Supabase ไม่ได้</h1>
+        <p className="mt-3 text-sm leading-6 text-muted">กำหนด VITE_SUPABASE_URL และ VITE_SUPABASE_ANON_KEY ใน .env.local แล้วเปิด dev server ใหม่</p>
+      </div>
+    </main>
   )
 }
 

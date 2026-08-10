@@ -24,10 +24,11 @@ function createGateway(overrides: Partial<AuthGateway> = {}): AuthGateway {
 describe('AuthProvider', () => {
   afterEach(cleanup)
 
-  it('keeps the workspace available in local demo mode', () => {
+  it('fails closed instead of showing mock data when cloud configuration is absent', () => {
     render(<AuthProvider gateway={null}><p>พื้นที่ทำงาน</p></AuthProvider>)
 
-    expect(screen.getByText('พื้นที่ทำงาน')).toBeInTheDocument()
+    expect(screen.queryByText('พื้นที่ทำงาน')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'ยังเชื่อมต่อ Supabase ไม่ได้' })).toBeInTheDocument()
   })
 
   it('gates cloud mode and opens the workspace after password sign-in', async () => {

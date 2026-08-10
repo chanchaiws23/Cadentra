@@ -2,27 +2,34 @@ import { Check, ChevronDown, Circle, Flame, Play, Sparkles, Zap } from 'lucide-r
 import type { Habit, Task } from '@cadentra/domain'
 import { PageHeading } from '../../components/PageHeading'
 import { useI18n } from '../../i18n/LocaleProvider'
-import { formatTime, todayKey } from '../../lib/date'
+import { formatMinutes, formatTime, todayKey } from '../../lib/date'
 
 interface TodayViewProps {
   tasks: Task[]
   habits: Habit[]
   rate: number
   completedHabits: number
+  focusMinutes: number
+  displayName: string
   onTask: (task: Task) => void
   onHabit: (habit: Habit) => void
   onCoach: () => void
 }
 
-export function TodayView({ tasks, habits, rate, completedHabits, onTask, onHabit, onCoach }: TodayViewProps) {
+export function TodayView({ tasks, habits, rate, completedHabits, focusMinutes, displayName, onTask, onHabit, onCoach }: TodayViewProps) {
   const { t } = useI18n()
+  const remainingTasks = tasks.filter((task) => task.status !== 'done').length
+  const nextTask = tasks.find((task) => task.status !== 'done')
+  const now = new Date()
+  const dateLabel = new Intl.DateTimeFormat('th-TH', { weekday: 'long', day: 'numeric', month: 'long' }).format(now)
+  const greeting = now.getHours() < 12 ? 'สวัสดีตอนเช้า' : now.getHours() < 18 ? 'สวัสดีตอนบ่าย' : 'สวัสดีตอนเย็น'
 
   return (
     <>
       <PageHeading
-        eyebrow={t('today.eyebrow')}
-        title={t('today.title')}
-        detail={t('today.detail')}
+        eyebrow={dateLabel}
+        title={`${greeting}, ${displayName}`}
+        detail={remainingTasks ? `เหลืองานในวันนี้ ${remainingTasks} รายการ` : 'วันนี้ยังไม่มีงานค้างอยู่'}
         action={<button className="coach-button" onClick={onCoach}><Sparkles size={17}/> {t('action.coach')}</button>}
       />
       <div className="progress-line"><span style={{ width: `${rate}%` }}/></div>
@@ -30,27 +37,29 @@ export function TodayView({ tasks, habits, rate, completedHabits, onTask, onHabi
         <div><strong>{rate}%</strong><span>{t('today.plan')}</span></div>
         <div><strong>{tasks.filter((task) => task.status === 'done').length}/{tasks.length}</strong><span>{t('today.tasks')}</span></div>
         <div><strong>{completedHabits}/{habits.length}</strong><span>{t('today.habits')}</span></div>
-        <div><strong>1ชม. 30น.</strong><span>{t('today.focusTime')}</span></div>
+        <div><strong>{formatMinutes(focusMinutes)}</strong><span>{t('today.focusTime')}</span></div>
       </div>
       <div className="today-grid">
         <section className="timeline-section">
           <div className="section-title">
-            <div><h2>{t('today.schedule')}</h2><p>{t('today.timezone')}</p></div>
+            <div><h2>{t('today.schedule')}</h2><p>{Intl.DateTimeFormat().resolvedOptions().timeZone}</p></div>
             <button className="text-button">{t('action.schedule')} <ChevronDown size={15}/></button>
           </div>
           <div className="timeline">
             {tasks.map((task) => <TimelineItem key={task.id} task={task} onToggle={() => onTask(task)}/>) }
+            {!tasks.length && <div className="grid min-h-40 place-items-center text-sm text-muted">ยังไม่มีงานในวันนี้ กด “เพิ่ม” เพื่อวางงานแรก</div>}
           </div>
         </section>
         <aside className="context-panel">
           <div className="section-title"><div><h2>{t('today.rhythm')}</h2><p>{completedHabits}/{habits.length} {t('today.completed')}</p></div></div>
           <div className="habit-list compact-list">
             {habits.map((habit) => <HabitRow key={habit.id} habit={habit} onToggle={() => onHabit(habit)}/>)}
+            {!habits.length && <p className="py-6 text-sm text-muted">ยังไม่มีนิสัยที่ติดตาม</p>}
           </div>
           <div className="next-focus">
             <span className="focus-icon"><Zap size={18}/></span>
-            <div><small>{t('today.nextFocus')}</small><strong>Deep work · 45 นาที</strong></div>
-            <button aria-label="เริ่มโฟกัส"><Play size={16} fill="currentColor"/></button>
+            <div><small>{t('today.nextFocus')}</small><strong>{nextTask?.title ?? 'ยังไม่ได้เลือกงาน'}</strong></div>
+            <button aria-label="เริ่มโฟกัส" disabled={!nextTask}><Play size={16} fill="currentColor"/></button>
           </div>
           <blockquote>{t('today.quote')}</blockquote>
         </aside>
@@ -79,11 +88,10 @@ function TimelineItem({ task, onToggle }: { task: Task; onToggle: () => void }) 
 
 function HabitRow({ habit, onToggle }: { habit: Habit; onToggle: () => void }) {
   const complete = habit.completedDates.includes(todayKey)
-
   return (
     <button className={complete ? 'habit-row complete' : 'habit-row'} onClick={onToggle}>
       <span className="habit-check">{complete && <Check size={15}/>}</span>
-      <span><strong>{habit.title}</strong><small>{habit.cue} · {habit.target} {habit.unit}</small></span>
+      <span><strong>{habit.title}</strong><small>{habit.cue || 'ไม่มีเงื่อนไข'} · {habit.target} {habit.unit}</small></span>
       <em><Flame size={13}/>{habit.streak}</em>
     </button>
   )

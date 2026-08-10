@@ -14,7 +14,7 @@ const task: Task = {
 function renderFocus(notify = vi.fn()) {
   render(
     <LocaleProvider>
-      <FocusView tasks={[task]} notify={notify} durationSeconds={3}/>
+      <FocusView tasks={[task]} notify={notify} onComplete={vi.fn()} durationSeconds={3}/>
     </LocaleProvider>,
   )
   return notify

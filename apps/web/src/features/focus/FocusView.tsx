@@ -7,15 +7,18 @@ import { useI18n } from '../../i18n/LocaleProvider'
 interface FocusViewProps {
   tasks: Task[]
   notify: (message: string) => void
+  onComplete: (task: Task | undefined, plannedMinutes: number, elapsedSeconds: number) => void
   durationSeconds?: number
 }
 
 const completionMessage = 'จบช่วงโฟกัสแล้ว พักสายตาสักครู่'
 
-export function FocusView({ tasks, notify, durationSeconds = 45 * 60 }: FocusViewProps) {
+export function FocusView({ tasks, notify, onComplete, durationSeconds = 45 * 60 }: FocusViewProps) {
   const { t } = useI18n()
   const [seconds, setSeconds] = useState(durationSeconds)
   const [running, setRunning] = useState(false)
+  const totalMinutes = Math.ceil(durationSeconds / 60)
+  const activeTask = tasks.find((task) => task.status === 'in_progress')
 
   useEffect(() => {
     if (!running) return
@@ -24,6 +27,7 @@ export function FocusView({ tasks, notify, durationSeconds = 45 * 60 }: FocusVie
       setSeconds((value) => {
         if (value <= 1) {
           setRunning(false)
+          onComplete(activeTask, totalMinutes, durationSeconds)
           notify(completionMessage)
           return durationSeconds
         }
@@ -32,13 +36,11 @@ export function FocusView({ tasks, notify, durationSeconds = 45 * 60 }: FocusVie
     }, 1_000)
 
     return () => window.clearInterval(timer)
-  }, [durationSeconds, notify, running])
+  }, [activeTask, durationSeconds, notify, onComplete, running, totalMinutes])
 
   const minutes = Math.floor(seconds / 60)
   const remainingSeconds = seconds % 60
-  const totalMinutes = Math.ceil(durationSeconds / 60)
   const progress = (seconds / durationSeconds) * 360
-  const activeTask = tasks.find((task) => task.status === 'in_progress')
 
   const reset = () => {
     setSeconds(durationSeconds)

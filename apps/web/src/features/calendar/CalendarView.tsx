@@ -1,44 +1,61 @@
 import type { Task } from '@cadentra/domain'
 import { PageHeading } from '../../components/PageHeading'
 import { useI18n } from '../../i18n/LocaleProvider'
-import { formatTime } from '../../lib/date'
+import { formatTime, localDateKey } from '../../lib/date'
 
 interface CalendarViewProps {
   tasks: Task[]
   onTask: (task: Task) => void
 }
 
-const weekDays = ['จ. 3', 'อ. 4', 'พ. 5', 'พฤ. 6', 'ศ. 7']
+function currentWorkWeek() {
+  const today = new Date()
+  const monday = new Date(today)
+  const day = today.getDay() || 7
+  monday.setDate(today.getDate() - day + 1)
+  monday.setHours(0, 0, 0, 0)
+  return Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(monday)
+    date.setDate(monday.getDate() + index)
+    return { date, key: localDateKey(date) }
+  })
+}
 
 export function CalendarView({ tasks, onTask }: CalendarViewProps) {
   const { t } = useI18n()
+  const weekDays = currentWorkWeek()
+  const today = localDateKey(new Date())
+  const visibleTasks = tasks.filter((task) => weekDays.some((day) => day.key === localDateKey(task.start)))
+  const weekLabel = `${new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short' }).format(weekDays[0].date)} – ${new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short' }).format(weekDays[4].date)}`
 
   return (
     <>
       <PageHeading
-        eyebrow={t('calendar.eyebrow')}
+        eyebrow={weekLabel}
         title={t('calendar.title')}
         detail={t('calendar.detail')}
         action={<div className="segmented"><button>วัน</button><button className="active">สัปดาห์</button><button>เดือน</button></div>}
       />
+      {!visibleTasks.length && <p className="mb-4 text-sm text-muted">ยังไม่มีงานที่กำหนดเวลาในสัปดาห์นี้</p>}
       <div className="calendar-board">
-        <div className="calendar-corner">GMT+7</div>
-        {weekDays.map((day, index) => (
-          <div className={index === 1 ? 'calendar-day active' : 'calendar-day'} key={day}>
-            {day}<strong>{index + 3}</strong>
+        <div className="calendar-corner">{Intl.DateTimeFormat().resolvedOptions().timeZone}</div>
+        {weekDays.map(({ date, key }) => (
+          <div className={key === today ? 'calendar-day active' : 'calendar-day'} key={key}>
+            {new Intl.DateTimeFormat('th-TH', { weekday: 'short' }).format(date)}<strong>{date.getDate()}</strong>
           </div>
         ))}
         {Array.from({ length: 10 }, (_, row) => <div className="calendar-hour" key={row}>{8 + row}:00</div>)}
         <div className="calendar-grid-lines">{Array.from({ length: 50 }, (_, index) => <i key={index}/>)}</div>
-        {tasks.map((task) => {
+        {visibleTasks.map((task) => {
           const start = new Date(task.start)
+          const dayIndex = weekDays.findIndex((day) => day.key === localDateKey(task.start))
           const duration = (new Date(task.end).getTime() - start.getTime()) / 3_600_000
           return (
             <button
               key={task.id}
               className={`calendar-block ${task.status}`}
               onClick={() => onTask(task)}
-              style={{ gridColumn: 3, gridRow: `${start.getHours() - 8 + 3} / span ${Math.max(1, Math.round(duration))}` }}
+              style={{ gridColumn: dayIndex + 2, gridRow: `${Math.max(3, start.getHours() - 8 + 3)} / span ${Math.max(1, Math.round(duration))}` }}
             >
               {task.title}<small>{formatTime(task.start)}</small>
             </button>

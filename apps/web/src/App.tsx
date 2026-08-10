@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import {
-  BarChart3, Bell, Bot, CalendarDays, CheckCircle2, ChevronDown,
-  Flame, Focus, Gauge, Languages, LayoutList, Menu, MoreHorizontal,
-  LogOut, Plus, RotateCcw, Search, Settings, Sparkles,
+  BarChart3, Bell, CalendarDays, ChevronDown,
+  Flame, Focus, Gauge, Languages, LayoutList, Menu,
+  LogOut, Plus, Search, Settings, Sparkles,
   Target, Trophy, X,
 } from 'lucide-react'
-import { completionRate, pointsForCompletion, type AIProposal, type Habit, type Task } from '@cadentra/domain'
+import { completionRate, pointsForCompletion, type Habit, type Task } from '@cadentra/domain'
+import type { UserDataGateway } from '@cadentra/data'
 import { PageHeading } from './components/PageHeading'
 import { AppToaster } from './components/AppToaster'
 import { useAuth } from './auth/AuthContext'
@@ -16,28 +17,11 @@ import { FocusView } from './features/focus/FocusView'
 import { HabitsView } from './features/habits/HabitsView'
 import { TasksView } from './features/tasks/TasksView'
 import { TodayView } from './features/today/TodayView'
+import { useUserData } from './data/useUserData'
 import { useI18n } from './i18n/LocaleProvider'
 import type { MessageKey } from './i18n/messages'
-import { formatTime, todayKey } from './lib/date'
+import { formatMinutes, localDateKey, todayKey } from './lib/date'
 import { pathToView, viewPaths, type View } from './routing'
-
-const at = (hour: number, minute = 0) => {
-  const date = new Date(); date.setHours(hour, minute, 0, 0); return date.toISOString()
-}
-
-const initialTasks: Task[] = [
-  { id: 't1', userId: 'demo', title: 'วางแผนงานสำคัญของสัปดาห์', start: at(8, 30), end: at(9, 15), category: 'วางแผน', priority: 'high', status: 'done', goalId: 'g1' },
-  { id: 't2', userId: 'demo', title: 'Deep work · Cadentra', start: at(9, 30), end: at(11, 0), category: 'งาน', priority: 'high', status: 'in_progress', goalId: 'g1' },
-  { id: 't3', userId: 'demo', title: 'พักกลางวันและเดินเล่น', start: at(12, 0), end: at(13, 0), category: 'พัก', priority: 'low', status: 'planned' },
-  { id: 't4', userId: 'demo', title: 'ทบทวนภาษาอังกฤษ', start: at(14, 0), end: at(14, 40), category: 'พัฒนาตัวเอง', priority: 'medium', status: 'planned', recurring: true },
-  { id: 't5', userId: 'demo', title: 'ออกกำลังกาย', start: at(18, 0), end: at(19, 0), category: 'สุขภาพ', priority: 'medium', status: 'planned', recurring: true },
-]
-
-const initialHabits: Habit[] = [
-  { id: 'h1', userId: 'demo', title: 'อ่านหนังสือ', cue: 'หลังดื่มกาแฟเช้า', target: 20, unit: 'นาที', streak: 12, completedDates: [todayKey] },
-  { id: 'h2', userId: 'demo', title: 'ดื่มน้ำ', cue: 'ระหว่างวัน', target: 8, unit: 'แก้ว', streak: 7, completedDates: [] },
-  { id: 'h3', userId: 'demo', title: 'เขียนบันทึก', cue: 'ก่อนเข้านอน', target: 1, unit: 'ครั้ง', streak: 4, completedDates: [] },
-]
 
 const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] = [
   { id: 'today', labelKey: 'nav.today', icon: Gauge },
@@ -49,76 +33,96 @@ const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] 
   { id: 'insights', labelKey: 'nav.insights', icon: BarChart3 },
 ]
 
-function App() {
-  const { mode: authMode, session, signOut } = useAuth()
+function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
+  const { session, signOut } = useAuth()
   const { locale, setLocale, t } = useI18n()
   const location = useLocation()
   const navigate = useNavigate()
   const view = pathToView(location.pathname)
-  const [tasks, setTasks] = useState<Task[]>(() => JSON.parse(localStorage.getItem('cadentra.tasks') ?? 'null') ?? initialTasks)
-  const [habits, setHabits] = useState<Habit[]>(() => JSON.parse(localStorage.getItem('cadentra.habits') ?? 'null') ?? initialHabits)
-  const [points, setPoints] = useState(() => Number(localStorage.getItem('cadentra.points') ?? 240))
+  const { snapshot, loading, error, reload } = useUserData(dataGateway, session?.user.id)
+  const { tasks, habits, points, focusMinutes } = snapshot
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
-  const [coachOpen, setCoachOpen] = useState(false)
-
-  useEffect(() => localStorage.setItem('cadentra.tasks', JSON.stringify(tasks)), [tasks])
-  useEffect(() => localStorage.setItem('cadentra.habits', JSON.stringify(habits)), [habits])
-  useEffect(() => localStorage.setItem('cadentra.points', String(points)), [points])
-
-  const rate = completionRate(tasks)
+  const [habitAddOpen, setHabitAddOpen] = useState(false)
+  const todayTasks = tasks.filter((task) => localDateKey(task.start) === todayKey)
+  const rate = completionRate(todayTasks)
   const completedHabits = habits.filter((habit) => habit.completedDates.includes(todayKey)).length
   const notify = useCallback((message: string) => { toast.success(message) }, [])
 
-  const toggleTask = (task: Task) => {
+  const toggleTask = async (task: Task) => {
+    if (!dataGateway || !session) return
     const completing = task.status !== 'done'
-    setTasks((items) => items.map((item) => item.id === task.id ? { ...item, status: completing ? 'done' : 'planned' } : item))
-    setPoints((value) => value + (completing ? pointsForCompletion(task.priority) : -pointsForCompletion(task.priority)))
+    const result = await dataGateway.setTaskStatus(session.user.id, task.id, completing ? 'done' : 'planned')
+    if (!result.ok) return toast.error('บันทึกสถานะงานไม่สำเร็จ', { description: result.error.message })
+    const amount = completing ? pointsForCompletion(task.priority) : -pointsForCompletion(task.priority)
+    const pointsResult = await dataGateway.recordPoints(session.user.id, 'task', task.id, amount, completing ? 'task_completed' : 'task_reopened')
+    if (!pointsResult.ok) toast.warning('สถานะงานถูกบันทึก แต่คะแนนยังไม่อัปเดต')
+    await reload()
     if (completing) notify(`ทำสำเร็จ · +${pointsForCompletion(task.priority)} คะแนน`)
     else toast.info('ย้ายกลับไปยังแผนแล้ว')
   }
 
-  const toggleHabit = (habit: Habit) => {
+  const toggleHabit = async (habit: Habit) => {
+    if (!dataGateway || !session) return
     const complete = !habit.completedDates.includes(todayKey)
-    setHabits((items) => items.map((item) => item.id === habit.id ? {
-      ...item,
-      completedDates: complete ? [...item.completedDates, todayKey] : item.completedDates.filter((date) => date !== todayKey),
-      streak: Math.max(0, item.streak + (complete ? 1 : -1)),
-    } : item))
-    setPoints((value) => value + (complete ? 8 : -8))
+    const result = await dataGateway.setHabitCheckIn(session.user.id, habit.id, todayKey, complete)
+    if (!result.ok) return toast.error('บันทึกนิสัยไม่สำเร็จ', { description: result.error.message })
+    const pointsResult = await dataGateway.recordPoints(session.user.id, 'habit', habit.id, complete ? 8 : -8, complete ? 'habit_checked_in' : 'habit_checkin_removed')
+    if (!pointsResult.ok) toast.warning('เช็กอินถูกบันทึก แต่คะแนนยังไม่อัปเดต')
+    await reload()
     if (complete) notify('รักษาจังหวะได้อีกหนึ่งวัน · +8 คะแนน')
     else toast.info('ไม่เป็นไร เริ่มใหม่ได้เสมอ')
   }
 
-  const addTask = (title: string, time: string, duration: number) => {
+  const addTask = async (title: string, time: string, duration: number) => {
+    if (!dataGateway || !session) return
     const [hour, minute] = time.split(':').map(Number)
     const start = new Date(); start.setHours(hour, minute, 0, 0)
     const end = new Date(start.getTime() + duration * 60000)
-    setTasks((items) => [...items, { id: crypto.randomUUID(), userId: 'demo', title, start: start.toISOString(), end: end.toISOString(), category: 'ทั่วไป', priority: 'medium', status: 'planned' }])
+    const result = await dataGateway.createTask(session.user.id, { title, start: start.toISOString(), end: end.toISOString() })
+    if (!result.ok) return toast.error('เพิ่มงานไม่สำเร็จ', { description: result.error.message })
+    await reload()
     setAddOpen(false); notify('เพิ่มลงในวันนี้แล้ว')
   }
 
-  const deleteTask = useCallback((task: Task) => {
-    const originalIndex = tasks.findIndex((item) => item.id === task.id)
-    setTasks((items) => items.filter((item) => item.id !== task.id))
+  const addHabit = async (title: string, cue: string, target: number, unit: string) => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.createHabit(session.user.id, { title, cue, target, unit })
+    if (!result.ok) return toast.error('เพิ่มนิสัยไม่สำเร็จ', { description: result.error.message })
+    await reload()
+    setHabitAddOpen(false); notify('เพิ่มนิสัยแล้ว')
+  }
+
+  const deleteTask = useCallback(async (task: Task) => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.softDeleteTask(session.user.id, task.id)
+    if (!result.ok) return toast.error('ลบงานไม่สำเร็จ', { description: result.error.message })
+    await reload()
     toast.success('ลบงานแล้ว', {
       description: task.title,
       action: {
         label: 'เลิกทำ',
-        onClick: () => setTasks((items) => {
-          if (items.some((item) => item.id === task.id)) return items
-          const restored = [...items]
-          restored.splice(Math.min(Math.max(originalIndex, 0), restored.length), 0, task)
-          return restored
+        onClick: () => void dataGateway.restoreTask(session.user.id, task.id).then(async (restoreResult) => {
+          if (!restoreResult.ok) return toast.error('กู้คืนงานไม่สำเร็จ', { description: restoreResult.error.message })
+          await reload()
         }),
       },
     })
-  }, [tasks])
+  }, [dataGateway, reload, session])
+
+  const recordFocus = async (task: Task | undefined, plannedMinutes: number, elapsedSeconds: number) => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.recordFocusSession(session.user.id, task?.id, plannedMinutes, elapsedSeconds)
+    if (!result.ok) return toast.error('บันทึกเวลาโฟกัสไม่สำเร็จ', { description: result.error.message })
+    await reload()
+  }
 
   const handleSignOut = async () => {
     const result = await signOut()
     if (!result.ok) toast.error('ออกจากระบบไม่สำเร็จ', { description: result.message })
   }
+
+  const level = Math.floor(points / 100) + 1
 
   return (
     <div className="app-shell">
@@ -132,9 +136,9 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <button className="nav-item"><Trophy size={18}/><span>เลเวล 4</span><em>{points} XP</em></button>
+          <button className="nav-item"><Trophy size={18}/><span>เลเวล {level}</span><em>{points} XP</em></button>
           <button className={view === 'settings' ? 'nav-item active' : 'nav-item'} onClick={() => navigate(viewPaths.settings)}><Settings size={18}/><span>{t('nav.settings')}</span></button>
-          <div className="profile"><div className="avatar">{authMode === 'cloud' ? session?.user.email.slice(0, 1).toUpperCase() : 'ช'}</div><div><strong>{authMode === 'cloud' ? session?.user.email.split('@')[0] : 'ชัย'}</strong><small>{authMode === 'cloud' ? session?.user.email : 'ซิงก์ในเครื่อง'}</small></div>{authMode === 'cloud' ? <button type="button" className="grid size-8 place-items-center rounded-lg text-muted hover:bg-[#e3e2da] hover:text-ink" onClick={() => void handleSignOut()} aria-label="ออกจากระบบ"><LogOut size={16}/></button> : <MoreHorizontal size={18}/>}</div>
+          <div className="profile"><div className="avatar">{session?.user.email.slice(0, 1).toUpperCase()}</div><div><strong>{session?.user.email.split('@')[0]}</strong><small>{session?.user.email}</small></div><button type="button" className="grid size-8 place-items-center rounded-lg text-muted hover:bg-[#e3e2da] hover:text-ink" onClick={() => void handleSignOut()} aria-label="ออกจากระบบ"><LogOut size={16}/></button></div>
         </div>
       </aside>
 
@@ -146,24 +150,24 @@ function App() {
         </header>
 
         <section className="content">
-          <Routes>
+          {loading ? <DataLoading/> : error ? <DataLoadError message={error} onRetry={() => void reload()}/> : <Routes>
             <Route path="/" element={<Navigate to={viewPaths.today} replace/>}/>
-            <Route path={viewPaths.today} element={<TodayView tasks={tasks} habits={habits} rate={rate} completedHabits={completedHabits} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => setCoachOpen(true)} />}/>
+            <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={session?.user.email.split('@')[0] ?? ''} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => toast.info('AI Coach จะเปิดใช้เมื่อ Edge Function พร้อม')} />}/>
             <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} onTask={toggleTask}/>}/>
             <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
             <Route path={viewPaths.goals} element={<PlaceholderView eyebrow="เป้าหมายระยะยาว" title="เป้าหมาย" detail="เชื่อมสิ่งที่อยากเปลี่ยนให้เป็น Milestone งาน และเวลาในปฏิทิน"/>}/>
-            <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabit={toggleHabit}/>}/>
-            <Route path={viewPaths.focus} element={<FocusView tasks={tasks} notify={notify}/>}/>
-            <Route path={viewPaths.insights} element={<InsightsView tasks={tasks} habits={habits} points={points}/>}/>
+            <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabit={toggleHabit} onAdd={() => setHabitAddOpen(true)}/>}/>
+            <Route path={viewPaths.focus} element={<FocusView tasks={tasks} notify={notify} onComplete={recordFocus}/>}/>
+            <Route path={viewPaths.insights} element={<InsightsView tasks={tasks} habits={habits} points={points} focusMinutes={focusMinutes}/>}/>
             <Route path={viewPaths.settings} element={<PlaceholderView eyebrow="การตั้งค่าส่วนตัว" title={t('nav.settings')} detail="จัดการบัญชี ภาษา การแจ้งเตือน การเชื่อมต่อ และข้อมูลของคุณ"/>}/>
             <Route path="*" element={<Navigate to={viewPaths.today} replace/>}/>
-          </Routes>
+          </Routes>}
         </section>
       </main>
 
       {menuOpen && <button className="scrim" onClick={() => setMenuOpen(false)} aria-label="ปิดเมนู"/>}
       {addOpen && <AddTaskModal onClose={() => setAddOpen(false)} onAdd={addTask}/>} 
-      {coachOpen && <CoachPanel tasks={tasks} onClose={() => setCoachOpen(false)} onApply={(proposal) => { setTasks((items) => items.map((item) => { const change = proposal.changes.find((entry) => entry.taskId === item.id && entry.accepted); return change?.after ? { ...item, ...change.after } : item })); setCoachOpen(false); notify('ยืนยันตารางใหม่แล้ว · ย้อนกลับได้จากประวัติ') }}/>} 
+      {habitAddOpen && <AddHabitModal onClose={() => setHabitAddOpen(false)} onAdd={addHabit}/>}
       <AppToaster/>
     </div>
   )
@@ -173,12 +177,22 @@ function PlaceholderView({ eyebrow, title, detail }: { eyebrow: string; title: s
   return <PageHeading eyebrow={eyebrow} title={title} detail={detail}/>
 }
 
-function InsightsView({ tasks, habits, points }: { tasks: Task[]; habits: Habit[]; points: number }) {
+function DataLoading() {
+  return <div className="grid min-h-[420px] place-items-center" aria-busy="true"><p className="text-sm text-muted">กำลังโหลดข้อมูลของคุณ…</p></div>
+}
+
+function DataLoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return <div className="grid min-h-[420px] place-items-center" role="alert"><div className="max-w-md text-center"><h2 className="font-display text-2xl">โหลดข้อมูลไม่สำเร็จ</h2><p className="mt-2 text-sm text-muted">{message}</p><button className="primary mt-5" onClick={onRetry}>ลองใหม่</button></div></div>
+}
+
+function InsightsView({ tasks, habits, points, focusMinutes }: { tasks: Task[]; habits: Habit[]; points: number; focusMinutes: number }) {
   const { t } = useI18n()
-  const bars = [46, 62, 54, 78, 88, 32, 68]
+  const completedTasks = tasks.filter((task) => task.status === 'done').length
+  const completedToday = habits.filter((habit) => habit.completedDates.includes(todayKey)).length
+  const consistency = habits.length ? Math.round((completedToday / habits.length) * 100) : 0
   return <><PageHeading eyebrow={t('insights.eyebrow')} title={t('insights.title')} detail={t('insights.detail')} action={<button className="filter-button">สัปดาห์นี้ <ChevronDown size={14}/></button>}/>
-    <div className="insight-strip"><div><small>ความสม่ำเสมอ</small><strong>82%</strong><em>+9%</em></div><div><small>เวลาโฟกัส</small><strong>8ชม. 25น.</strong><em>+1ชม. 10น.</em></div><div><small>งานสำเร็จ</small><strong>{tasks.filter(t => t.status === 'done').length * 7}</strong><em>ตามแผน 76%</em></div><div><small>คะแนนสะสม</small><strong>{points}</strong><em>เลเวล 4</em></div></div>
-    <div className="insights-grid"><section className="chart-panel"><div className="section-title"><div><h2>จังหวะการทำงาน</h2><p>คะแนนความสม่ำเสมอรายวัน</p></div></div><div className="bar-chart">{bars.map((bar, index) => <div key={index}><span style={{ height: `${bar}%` }}/><small>{['จ','อ','พ','พฤ','ศ','ส','อา'][index]}</small></div>)}</div></section><section className="reflection-panel"><span className="reflection-icon"><Sparkles/></span><p className="eyebrow">สิ่งที่ค้นพบ</p><h2>ช่วงเช้าคือเวลาที่ดีที่สุดของคุณ</h2><p>งานที่เริ่มก่อน 10:00 สำเร็จมากกว่าช่วงอื่น 34% ลองกันเวลา 09:00–11:00 ไว้สำหรับงานสำคัญ</p><button className="text-button">ใช้กับสัปดาห์หน้า →</button></section></div>
+    <div className="insight-strip"><div><small>ความสม่ำเสมอวันนี้</small><strong>{consistency}%</strong><em>{completedToday}/{habits.length} นิสัย</em></div><div><small>เวลาโฟกัสวันนี้</small><strong>{formatMinutes(focusMinutes)}</strong><em>จาก Focus sessions</em></div><div><small>งานสำเร็จ</small><strong>{completedTasks}</strong><em>จาก {tasks.length} งาน</em></div><div><small>คะแนนสะสม</small><strong>{points}</strong><em>จากกิจกรรมที่บันทึก</em></div></div>
+    <div className="insights-grid"><section className="chart-panel"><div className="section-title"><div><h2>ข้อมูลแนวโน้ม</h2><p>Cadentra จะแสดงแนวโน้มเมื่อมีข้อมูลหลายวันเพียงพอ</p></div></div><div className="grid min-h-48 place-items-center text-sm text-muted">ยังไม่มีข้อมูลรายวันที่เพียงพอ</div></section><section className="reflection-panel"><span className="reflection-icon"><Sparkles/></span><p className="eyebrow">สิ่งที่ค้นพบ</p><h2>ยังไม่มีข้อสรุป</h2><p>ใช้งานและทำ Weekly Review ต่อเนื่อง แล้วระบบจะสรุปจากข้อมูลจริงของคุณที่นี่</p></section></div>
     <section className="streak-section"><div className="section-title"><div><h2>นิสัยที่กำลังเติบโต</h2><p>ความสม่ำเสมอสำคัญกว่าความสมบูรณ์แบบ</p></div></div>{habits.map(h => <div className="streak-row" key={h.id}><strong>{h.title}</strong><div>{Array.from({length: 14}, (_, i) => <i className={i < Math.min(h.streak, 14) ? 'filled' : ''} key={i}/>)}</div><span>{h.streak} วัน</span></div>)}</section></>
 }
 
@@ -187,10 +201,12 @@ function AddTaskModal({ onClose, onAdd }: { onClose: () => void; onAdd: (title: 
   return <div className="modal-backdrop" onMouseDown={onClose}><form className="modal" onMouseDown={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); if (title.trim()) onAdd(title.trim(), time, duration) }}><div className="modal-head"><div><p className="eyebrow">เพิ่มอย่างรวดเร็ว</p><h2>วางลงในวันนี้</h2></div><button type="button" className="icon-button" onClick={onClose}><X/></button></div><label>สิ่งที่ต้องทำ<input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="เช่น อ่านหนังสือ 20 นาที"/></label><div className="form-grid"><label>เริ่มเวลา<input type="time" value={time} onChange={e => setTime(e.target.value)}/></label><label>ระยะเวลา<select value={duration} onChange={e => setDuration(Number(e.target.value))}><option value={15}>15 นาที</option><option value={30}>30 นาที</option><option value={45}>45 นาที</option><option value={60}>1 ชั่วโมง</option><option value={90}>1.5 ชั่วโมง</option></select></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>ยกเลิก</button><button className="primary" disabled={!title.trim()}>เพิ่มลงตาราง</button></div></form></div>
 }
 
-function CoachPanel({ tasks, onClose, onApply }: { tasks: Task[]; onClose: () => void; onApply: (proposal: AIProposal) => void }) {
-  const proposal = useMemo<AIProposal>(() => ({ id: crypto.randomUUID(), status: 'draft', reason: 'ช่วงบ่ายมีงานต่อเนื่องนานเกินไป การเว้นช่วงพักจะช่วยรักษาพลังงาน', createdAt: new Date().toISOString(), changes: tasks.filter(t => t.status === 'planned').slice(0, 2).map((task, i) => ({ id: crypto.randomUUID(), taskId: task.id, action: 'move', before: { start: task.start, end: task.end }, after: { start: new Date(new Date(task.start).getTime() + (i + 1) * 30 * 60000).toISOString(), end: new Date(new Date(task.end).getTime() + (i + 1) * 30 * 60000).toISOString() }, accepted: true })) }), [tasks])
-  const [changes, setChanges] = useState(proposal.changes)
-  return <div className="coach-panel"><div className="coach-head"><div className="coach-identity"><span><Bot/></span><div><strong>Cadentra Coach</strong><small>เสนอเท่านั้น · คุณเป็นคนตัดสินใจ</small></div></div><button className="icon-button" onClick={onClose}><X/></button></div><div className="coach-content"><p className="eyebrow">ข้อเสนอสำหรับวันนี้</p><h2>เพิ่มพื้นที่พัก แล้วเลื่อน 2 งาน</h2><p>{proposal.reason}</p><div className="proposal-list">{changes.map(change => { const task = tasks.find(t => t.id === change.taskId)!; return <label key={change.id} className={change.accepted ? 'proposal accepted' : 'proposal'}><input type="checkbox" checked={change.accepted} onChange={() => setChanges(items => items.map(item => item.id === change.id ? {...item, accepted: !item.accepted} : item))}/><span><strong>{task.title}</strong><small>{formatTime(change.before!.start)} → {formatTime(change.after!.start)}</small></span><CheckCircle2/></label> })}</div><div className="safety-note"><RotateCcw size={17}/><span>หลังยืนยัน คุณสามารถย้อนกลับการเปลี่ยนแปลงทั้งหมดได้จากประวัติ</span></div></div><div className="coach-actions"><button className="secondary" onClick={onClose}>ปฏิเสธ</button><button className="primary" onClick={() => onApply({...proposal, changes, status: 'accepted'})}>ยืนยัน {changes.filter(c => c.accepted).length} รายการ</button></div></div>
+function AddHabitModal({ onClose, onAdd }: { onClose: () => void; onAdd: (title: string, cue: string, target: number, unit: string) => void }) {
+  const [title, setTitle] = useState('')
+  const [cue, setCue] = useState('')
+  const [target, setTarget] = useState(1)
+  const [unit, setUnit] = useState('ครั้ง')
+  return <div className="modal-backdrop" onMouseDown={onClose}><form className="modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); if (title.trim() && target > 0) onAdd(title.trim(), cue.trim(), target, unit.trim() || 'ครั้ง') }}><div className="modal-head"><div><p className="eyebrow">สร้างจังหวะใหม่</p><h2>เพิ่มนิสัย</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="ปิด"><X/></button></div><label>ชื่อนิสัย<input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="เช่น อ่านหนังสือ"/></label><label>ทำหลังจากอะไร<input value={cue} onChange={(event) => setCue(event.target.value)} placeholder="เช่น หลังอาหารเช้า"/></label><div className="form-grid"><label>เป้าหมาย<input type="number" min="1" step="1" value={target} onChange={(event) => setTarget(Number(event.target.value))}/></label><label>หน่วย<input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="ครั้ง / นาที / แก้ว"/></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>ยกเลิก</button><button className="primary" disabled={!title.trim() || target <= 0}>เพิ่มนิสัย</button></div></form></div>
 }
 
 export default App
