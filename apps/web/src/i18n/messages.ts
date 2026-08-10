@@ -1,6 +1,6 @@
 export const messages = {
   th: {
-    'nav.today': 'วันนี้', 'nav.calendar': 'ปฏิทิน', 'nav.tasks': 'งาน', 'nav.habits': 'นิสัย',
+    'nav.today': 'วันนี้', 'nav.calendar': 'ปฏิทิน', 'nav.tasks': 'งาน', 'nav.goals': 'เป้าหมาย', 'nav.habits': 'นิสัย',
     'nav.focus': 'โฟกัส', 'nav.insights': 'ข้อมูลเชิงลึก', 'nav.settings': 'ตั้งค่า',
     'top.search': 'ค้นหาหรือเพิ่มอย่างรวดเร็ว', 'top.notifications': 'การแจ้งเตือน', 'action.add': 'เพิ่ม',
     'action.coach': 'ให้ Coach ช่วยจัดวัน', 'action.schedule': 'จัดตาราง', 'action.language': 'เปลี่ยนเป็นภาษาอังกฤษ',
@@ -17,7 +17,7 @@ export const messages = {
     'insights.eyebrow': '7 วันที่ผ่านมา', 'insights.title': 'ข้อมูลเชิงลึก', 'insights.detail': 'ดูแนวโน้มเพื่อปรับระบบ ไม่ใช่เพื่อตัดสินตัวเอง',
   },
   en: {
-    'nav.today': 'Today', 'nav.calendar': 'Calendar', 'nav.tasks': 'Tasks', 'nav.habits': 'Habits',
+    'nav.today': 'Today', 'nav.calendar': 'Calendar', 'nav.tasks': 'Tasks', 'nav.goals': 'Goals', 'nav.habits': 'Habits',
     'nav.focus': 'Focus', 'nav.insights': 'Insights', 'nav.settings': 'Settings',
     'top.search': 'Search or quick add', 'top.notifications': 'Notifications', 'action.add': 'Add',
     'action.coach': 'Ask Coach to plan my day', 'action.schedule': 'Schedule', 'action.language': 'เปลี่ยนเป็นภาษาไทย',

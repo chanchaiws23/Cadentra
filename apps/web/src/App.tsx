@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import {
   BarChart3, Bell, Bot, CalendarDays, Check, CheckCircle2, ChevronDown,
   Circle, Flame, Focus, Gauge, Languages, LayoutList, Menu, MoreHorizontal,
   Pause, Play, Plus, RotateCcw, Search, Settings, Sparkles, TimerReset,
-  Trophy, X, Zap,
+  Target, Trophy, X, Zap,
 } from 'lucide-react'
 import { completionRate, pointsForCompletion, type AIProposal, type Habit, type Task } from '@cadentra/domain'
 import { useI18n } from './i18n/LocaleProvider'
 import type { MessageKey } from './i18n/messages'
+import { pathToView, viewPaths, type View } from './routing'
 import './App.css'
-
-type View = 'today' | 'calendar' | 'tasks' | 'habits' | 'focus' | 'insights'
 
 const todayKey = new Date().toISOString().slice(0, 10)
 const at = (hour: number, minute = 0) => {
@@ -35,6 +35,7 @@ const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] 
   { id: 'today', labelKey: 'nav.today', icon: Gauge },
   { id: 'calendar', labelKey: 'nav.calendar', icon: CalendarDays },
   { id: 'tasks', labelKey: 'nav.tasks', icon: LayoutList },
+  { id: 'goals', labelKey: 'nav.goals', icon: Target },
   { id: 'habits', labelKey: 'nav.habits', icon: Flame },
   { id: 'focus', labelKey: 'nav.focus', icon: Focus },
   { id: 'insights', labelKey: 'nav.insights', icon: BarChart3 },
@@ -44,7 +45,9 @@ const formatTime = (value: string) => new Intl.DateTimeFormat('th-TH', { hour: '
 
 function App() {
   const { locale, setLocale, t } = useI18n()
-  const [view, setView] = useState<View>('today')
+  const location = useLocation()
+  const navigate = useNavigate()
+  const view = pathToView(location.pathname)
   const [tasks, setTasks] = useState<Task[]>(() => JSON.parse(localStorage.getItem('cadentra.tasks') ?? 'null') ?? initialTasks)
   const [habits, setHabits] = useState<Habit[]>(() => JSON.parse(localStorage.getItem('cadentra.habits') ?? 'null') ?? initialHabits)
   const [points, setPoints] = useState(() => Number(localStorage.getItem('cadentra.points') ?? 240))
@@ -93,14 +96,14 @@ function App() {
         <div className="brand"><span className="brand-mark">C</span><span>Cadentra</span></div>
         <nav aria-label="เมนูหลัก">
           {navItems.map(({ id, labelKey, icon: Icon }) => (
-            <button key={id} className={view === id ? 'nav-item active' : 'nav-item'} onClick={() => { setView(id); setMenuOpen(false) }}>
+            <button key={id} className={view === id ? 'nav-item active' : 'nav-item'} onClick={() => { navigate(viewPaths[id]); setMenuOpen(false) }}>
               <Icon size={18} strokeWidth={1.8}/><span>{t(labelKey)}</span>
             </button>
           ))}
         </nav>
         <div className="sidebar-bottom">
           <button className="nav-item"><Trophy size={18}/><span>เลเวล 4</span><em>{points} XP</em></button>
-          <button className="nav-item"><Settings size={18}/><span>{t('nav.settings')}</span></button>
+          <button className={view === 'settings' ? 'nav-item active' : 'nav-item'} onClick={() => navigate(viewPaths.settings)}><Settings size={18}/><span>{t('nav.settings')}</span></button>
           <div className="profile"><div className="avatar">ช</div><div><strong>ชัย</strong><small>ซิงก์ในเครื่อง</small></div><MoreHorizontal size={18}/></div>
         </div>
       </aside>
@@ -113,12 +116,18 @@ function App() {
         </header>
 
         <section className="content">
-          {view === 'today' && <Today tasks={tasks} habits={habits} rate={rate} completedHabits={completedHabits} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => setCoachOpen(true)} />}
-          {view === 'calendar' && <CalendarView tasks={tasks} onTask={toggleTask}/>} 
-          {view === 'tasks' && <TasksView tasks={tasks} onTask={toggleTask} onAdd={() => setAddOpen(true)}/>} 
-          {view === 'habits' && <HabitsView habits={habits} onHabit={toggleHabit}/>} 
-          {view === 'focus' && <FocusView tasks={tasks} notify={notify}/>} 
-          {view === 'insights' && <InsightsView tasks={tasks} habits={habits} points={points}/>} 
+          <Routes>
+            <Route path="/" element={<Navigate to={viewPaths.today} replace/>}/>
+            <Route path={viewPaths.today} element={<Today tasks={tasks} habits={habits} rate={rate} completedHabits={completedHabits} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => setCoachOpen(true)} />}/>
+            <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} onTask={toggleTask}/>}/>
+            <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onAdd={() => setAddOpen(true)}/>}/>
+            <Route path={viewPaths.goals} element={<PlaceholderView eyebrow="เป้าหมายระยะยาว" title="เป้าหมาย" detail="เชื่อมสิ่งที่อยากเปลี่ยนให้เป็น Milestone งาน และเวลาในปฏิทิน"/>}/>
+            <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabit={toggleHabit}/>}/>
+            <Route path={viewPaths.focus} element={<FocusView tasks={tasks} notify={notify}/>}/>
+            <Route path={viewPaths.insights} element={<InsightsView tasks={tasks} habits={habits} points={points}/>}/>
+            <Route path={viewPaths.settings} element={<PlaceholderView eyebrow="การตั้งค่าส่วนตัว" title={t('nav.settings')} detail="จัดการบัญชี ภาษา การแจ้งเตือน การเชื่อมต่อ และข้อมูลของคุณ"/>}/>
+            <Route path="*" element={<Navigate to={viewPaths.today} replace/>}/>
+          </Routes>
         </section>
       </main>
 
@@ -128,6 +137,10 @@ function App() {
       {toast && <div className="toast"><CheckCircle2 size={18}/>{toast}</div>}
     </div>
   )
+}
+
+function PlaceholderView({ eyebrow, title, detail }: { eyebrow: string; title: string; detail: string }) {
+  return <PageHeading eyebrow={eyebrow} title={title} detail={detail}/>
 }
 
 function PageHeading({ eyebrow, title, detail, action }: { eyebrow: string; title: string; detail: string; action?: React.ReactNode }) {
