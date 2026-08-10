@@ -35,9 +35,11 @@ function remoteGateway(): UserDataGateway {
     createGoal: vi.fn(async () => ({ ok: true as const, value: undefined })),
     setGoalStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
     softDeleteGoal: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    restoreGoal: vi.fn(async () => ({ ok: true as const, value: undefined })),
     createMilestone: vi.fn(async () => ({ ok: true as const, value: undefined })),
     setMilestoneStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
     softDeleteMilestone: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    restoreMilestone: vi.fn(async () => ({ ok: true as const, value: undefined })),
     setTaskStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
     setTaskOccurrenceStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
     softDeleteTask: vi.fn(async () => ({ ok: true as const, value: undefined })),
@@ -159,6 +161,38 @@ describe('offline user data gateway', () => {
     await gateway.syncPending?.('user-1')
     expect(remote.createGoal).toHaveBeenCalledWith('user-1', expect.objectContaining({ entityId: 'goal-id-2', idempotencyKey: 'goal-id-1' }))
     expect(remote.createMilestone).toHaveBeenCalledWith('user-1', expect.objectContaining({ goalId: 'goal-id-2', entityId: 'goal-id-4' }))
+  })
+
+  it('restores a deleted goal and its milestones while offline', async () => {
+    let online = true
+    let id = 0
+    const remote = remoteGateway()
+    vi.mocked(remote.load).mockResolvedValue({
+      ok: true,
+      value: {
+        ...snapshot,
+        goals: [{ id: 'goal-1', userId: 'user-1', title: 'Read more', description: '', status: 'planned', updatedAt: '' }],
+        milestones: [{ id: 'milestone-1', userId: 'user-1', goalId: 'goal-1', title: 'Read chapter one', status: 'planned', sortOrder: 0, updatedAt: '' }],
+      },
+    })
+    const gateway = createOfflineUserDataGateway(remote, new MemoryStorage(), { isOnline: () => online, createId: () => `restore-${++id}` })
+    await gateway.load('user-1', '', '2026-08-10')
+
+    online = false
+    await gateway.softDeleteGoal('user-1', 'goal-1')
+    let cached = await gateway.load('user-1', '', '2026-08-10')
+    expect(cached.ok && cached.value.goals).toHaveLength(0)
+    expect(cached.ok && cached.value.milestones).toHaveLength(0)
+
+    await gateway.restoreGoal('user-1', 'goal-1')
+    cached = await gateway.load('user-1', '', '2026-08-10')
+    expect(cached.ok && cached.value.goals[0].id).toBe('goal-1')
+    expect(cached.ok && cached.value.milestones[0].id).toBe('milestone-1')
+
+    online = true
+    await gateway.syncPending?.('user-1')
+    expect(remote.softDeleteGoal).toHaveBeenCalledWith('user-1', 'goal-1')
+    expect(remote.restoreGoal).toHaveBeenCalledWith('user-1', 'goal-1')
   })
 
   it('queues the status of one recurring occurrence while offline', async () => {
