@@ -28,6 +28,9 @@ export function parseWebEnvironment(input: Record<string, unknown>): WebEnvironm
       if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
         throw new Error('Cloud endpoints must use HTTPS.')
       }
+      if (url.pathname !== '/' || url.search || url.hash) {
+        throw new Error('Use the Supabase project URL without /rest/v1 or another path.')
+      }
     } catch (error) {
       throw new EnvironmentConfigurationError(
         `VITE_SUPABASE_URL is invalid: ${error instanceof Error ? error.message : 'unknown URL error'}`,

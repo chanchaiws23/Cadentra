@@ -47,6 +47,8 @@ Copy `.env.example` to `.env.local` and fill only the values needed locally.
 Never commit credentials. The app automatically uses local browser persistence
 when Supabase is not configured.
 
+For first-time cloud setup, follow the [Supabase setup guide](docs/setup/supabase.md).
+
 ## License
 
 This is a public source-visible repository, **not open source**. No rights to
