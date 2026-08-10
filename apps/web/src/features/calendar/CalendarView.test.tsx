@@ -53,6 +53,7 @@ describe('CalendarView', () => {
     fireEvent.drop(screen.getByRole('button', { name: 'ย้ายไป 2026-08-11 เวลา 10:00' }), { dataTransfer })
     fireEvent.click(screen.getByRole('button', { name: 'บันทึกเวลาใหม่' }))
 
-    expect(onReschedule).toHaveBeenCalledWith(task, '2026-08-11T03:00:00.000Z', '2026-08-11T04:00:00.000Z')
+    const expectedStart = new Date(2026, 7, 11, 10, 0, 0, 0)
+    expect(onReschedule).toHaveBeenCalledWith(task, expectedStart.toISOString(), new Date(expectedStart.getTime() + 60 * 60_000).toISOString())
   })
 })
