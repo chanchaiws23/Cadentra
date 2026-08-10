@@ -4,15 +4,17 @@ import {
   BarChart3, Bell, Bot, CalendarDays, Check, CheckCircle2, ChevronDown,
   Circle, Flame, Focus, Gauge, Languages, LayoutList, Menu, MoreHorizontal,
   Pause, Play, Plus, RotateCcw, Search, Settings, Sparkles, TimerReset,
-  Target, Trophy, X, Zap,
+  Target, Trophy, X,
 } from 'lucide-react'
 import { completionRate, pointsForCompletion, type AIProposal, type Habit, type Task } from '@cadentra/domain'
+import { PageHeading } from './components/PageHeading'
+import { TodayView } from './features/today/TodayView'
 import { useI18n } from './i18n/LocaleProvider'
 import type { MessageKey } from './i18n/messages'
+import { formatTime, todayKey } from './lib/date'
 import { pathToView, viewPaths, type View } from './routing'
 import './App.css'
 
-const todayKey = new Date().toISOString().slice(0, 10)
 const at = (hour: number, minute = 0) => {
   const date = new Date(); date.setHours(hour, minute, 0, 0); return date.toISOString()
 }
@@ -40,8 +42,6 @@ const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] 
   { id: 'focus', labelKey: 'nav.focus', icon: Focus },
   { id: 'insights', labelKey: 'nav.insights', icon: BarChart3 },
 ]
-
-const formatTime = (value: string) => new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit' }).format(new Date(value))
 
 function App() {
   const { locale, setLocale, t } = useI18n()
@@ -118,7 +118,7 @@ function App() {
         <section className="content">
           <Routes>
             <Route path="/" element={<Navigate to={viewPaths.today} replace/>}/>
-            <Route path={viewPaths.today} element={<Today tasks={tasks} habits={habits} rate={rate} completedHabits={completedHabits} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => setCoachOpen(true)} />}/>
+            <Route path={viewPaths.today} element={<TodayView tasks={tasks} habits={habits} rate={rate} completedHabits={completedHabits} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => setCoachOpen(true)} />}/>
             <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} onTask={toggleTask}/>}/>
             <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onAdd={() => setAddOpen(true)}/>}/>
             <Route path={viewPaths.goals} element={<PlaceholderView eyebrow="เป้าหมายระยะยาว" title="เป้าหมาย" detail="เชื่อมสิ่งที่อยากเปลี่ยนให้เป็น Milestone งาน และเวลาในปฏิทิน"/>}/>
@@ -141,47 +141,6 @@ function App() {
 
 function PlaceholderView({ eyebrow, title, detail }: { eyebrow: string; title: string; detail: string }) {
   return <PageHeading eyebrow={eyebrow} title={title} detail={detail}/>
-}
-
-function PageHeading({ eyebrow, title, detail, action }: { eyebrow: string; title: string; detail: string; action?: React.ReactNode }) {
-  return <div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{detail}</p></div>{action}</div>
-}
-
-function Today({ tasks, habits, rate, completedHabits, onTask, onHabit, onCoach }: { tasks: Task[]; habits: Habit[]; rate: number; completedHabits: number; onTask: (task: Task) => void; onHabit: (habit: Habit) => void; onCoach: () => void }) {
-  const { t } = useI18n()
-  return <>
-    <PageHeading eyebrow={t('today.eyebrow')} title={t('today.title')} detail={t('today.detail')} action={<button className="coach-button" onClick={onCoach}><Sparkles size={17}/> {t('action.coach')}</button>}/>
-    <div className="progress-line"><span style={{ width: `${rate}%` }}/></div>
-    <div className="daily-summary"><div><strong>{rate}%</strong><span>{t('today.plan')}</span></div><div><strong>{tasks.filter(t => t.status === 'done').length}/{tasks.length}</strong><span>{t('today.tasks')}</span></div><div><strong>{completedHabits}/{habits.length}</strong><span>{t('today.habits')}</span></div><div><strong>1ชม. 30น.</strong><span>{t('today.focusTime')}</span></div></div>
-    <div className="today-grid">
-      <section className="timeline-section">
-        <div className="section-title"><div><h2>{t('today.schedule')}</h2><p>{t('today.timezone')}</p></div><button className="text-button">{t('action.schedule')} <ChevronDown size={15}/></button></div>
-        <div className="timeline">
-          {tasks.map((task) => <TimelineItem key={task.id} task={task} onToggle={() => onTask(task)}/>) }
-        </div>
-      </section>
-      <aside className="context-panel">
-        <div className="section-title"><div><h2>{t('today.rhythm')}</h2><p>{completedHabits}/{habits.length} {t('today.completed')}</p></div></div>
-        <div className="habit-list compact-list">{habits.map((habit) => <HabitRow key={habit.id} habit={habit} onToggle={() => onHabit(habit)}/>)}</div>
-        <div className="next-focus"><span className="focus-icon"><Zap size={18}/></span><div><small>{t('today.nextFocus')}</small><strong>Deep work · 45 นาที</strong></div><button aria-label="เริ่มโฟกัส"><Play size={16} fill="currentColor"/></button></div>
-        <blockquote>{t('today.quote')}</blockquote>
-      </aside>
-    </div>
-  </>
-}
-
-function TimelineItem({ task, onToggle }: { task: Task; onToggle: () => void }) {
-  return <div className={`timeline-item ${task.status}`}>
-    <time>{formatTime(task.start)}</time><span className="time-dot"/>
-    <div className="timeline-content"><button className="check-button" onClick={onToggle} aria-label={task.status === 'done' ? 'ยกเลิกสำเร็จ' : 'ทำสำเร็จ'}>{task.status === 'done' ? <Check size={15}/> : <Circle size={15}/>}</button><div><strong>{task.title}</strong><small>{formatTime(task.start)}–{formatTime(task.end)} · {task.category}{task.recurring ? ' · ทำซ้ำ' : ''}</small></div><span className={`priority ${task.priority}`}>{task.priority === 'high' ? 'สำคัญ' : task.priority === 'medium' ? 'ปกติ' : 'ยืดหยุ่น'}</span></div>
-  </div>
-}
-
-function HabitRow({ habit, onToggle }: { habit: Habit; onToggle: () => void }) {
-  const complete = habit.completedDates.includes(todayKey)
-  return <button className={complete ? 'habit-row complete' : 'habit-row'} onClick={onToggle}>
-    <span className="habit-check">{complete && <Check size={15}/>}</span><span><strong>{habit.title}</strong><small>{habit.cue} · {habit.target} {habit.unit}</small></span><em><Flame size={13}/>{habit.streak}</em>
-  </button>
 }
 
 function CalendarView({ tasks, onTask }: { tasks: Task[]; onTask: (task: Task) => void }) {
