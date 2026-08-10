@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildHabits, calculateCurrentStreak, mapProfileRow, mapTaskRow } from './cloud-data'
+import { buildHabits, calculateCurrentStreak, mapGoalRow, mapMilestoneRow, mapProfileRow, mapTaskRow } from './cloud-data'
 
 describe('cloud data mapping', () => {
   it('maps user profile preferences without exposing database column names', () => {
@@ -35,5 +35,10 @@ describe('cloud data mapping', () => {
     )
     expect(habits[0]).toMatchObject({ target: 20, streak: 3, completedDates: ['2026-08-08', '2026-08-09', '2026-08-10'] })
     expect(calculateCurrentStreak(['2026-08-08', '2026-08-09'], '2026-08-10')).toBe(2)
+  })
+
+  it('maps goals and ordered milestones into domain models', () => {
+    expect(mapGoalRow({ id: 'goal-1', user_id: 'user-1', title: 'Speak English', description: null, target_date: '2026-12-31', status: 'planned', updated_at: '2026-08-10T00:00:00Z' })).toMatchObject({ id: 'goal-1', description: '', targetDate: '2026-12-31' })
+    expect(mapMilestoneRow({ id: 'milestone-1', user_id: 'user-1', goal_id: 'goal-1', title: 'First conversation', target_date: null, status: 'planned', sort_order: 2, updated_at: '2026-08-10T00:00:00Z' })).toMatchObject({ goalId: 'goal-1', sortOrder: 2 })
   })
 })

@@ -35,6 +35,10 @@ If the initial schema was already installed, also run the complete contents of
 retry keys used by the offline mutation queue to prevent duplicate habits,
 point transactions, and focus sessions after reconnecting.
 
+Then run `supabase/migrations/202608100003_goals_milestones.sql` once. This
+adds retry-safe goal writes and the RLS-protected `milestones` table used by
+the Goals workspace. Run follow-up migrations in filename order.
+
 ## 3. Configure authentication URLs
 
 In **Authentication > URL Configuration**, use:
