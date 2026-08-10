@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@cadentra/config": "*",
     "@cadentra/domain": "*",
     "@cadentra/data": "*",
     "@cadentra/ui": "*",
