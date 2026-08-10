@@ -72,7 +72,7 @@ create table public.ai_proposals (
 
 create table public.calendar_connections (
   id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
-  provider text not null check (provider in ('google','microsoft')), provider_account_id text not null,
+  provider text not null check (provider = 'google'), provider_account_id text not null,
   encrypted_token_ref text not null, sync_cursor text, sync_status text not null default 'idle', last_synced_at timestamptz,
   created_at timestamptz not null default now(), unique(user_id, provider, provider_account_id)
 );
@@ -127,4 +127,3 @@ create index habits_user_idx on public.habits(user_id) where deleted_at is null;
 create index habit_checkins_user_date_idx on public.habit_checkins(user_id, local_date desc);
 create index focus_sessions_user_started_idx on public.focus_sessions(user_id, started_at desc);
 create index audit_events_user_created_idx on public.audit_events(user_id, created_at desc);
-
