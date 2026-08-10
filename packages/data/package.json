@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",
-  "dependencies": { "@supabase/supabase-js": "^2.112.0" }
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@cadentra/domain": "*",
+    "@supabase/supabase-js": "^2.112.0"
+  }
 }
-
