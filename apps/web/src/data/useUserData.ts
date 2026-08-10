@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { UserDataGateway, UserDataSnapshot } from '@cadentra/data'
 import { todayKey } from '../lib/date'
 
-const emptySnapshot: UserDataSnapshot = { tasks: [], habits: [], points: 0, focusMinutes: 0 }
+const emptySnapshot: UserDataSnapshot = { profile: null, tasks: [], habits: [], points: 0, focusMinutes: 0 }
 
 interface UserDataState {
   loading: boolean

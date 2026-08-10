@@ -3,6 +3,15 @@ export * from './time'
 export type Priority = 'low' | 'medium' | 'high'
 export type ItemStatus = 'planned' | 'in_progress' | 'done' | 'skipped'
 
+export interface UserProfile {
+  id: string
+  displayName: string
+  timezone: string
+  locale: 'th' | 'en'
+  gamificationEnabled: boolean
+  healthAiConsent: boolean
+}
+
 export interface Task {
   id: string
   userId: string

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import {
@@ -8,7 +8,7 @@ import {
   Target, Trophy, X,
 } from 'lucide-react'
 import { completionRate, pointsForCompletion, type Habit, type Task } from '@cadentra/domain'
-import type { UserDataGateway } from '@cadentra/data'
+import type { UpdateProfileInput, UserDataGateway } from '@cadentra/data'
 import { PageHeading } from './components/PageHeading'
 import { AppToaster } from './components/AppToaster'
 import { useAuth } from './auth/AuthContext'
@@ -17,6 +17,7 @@ import { FocusView } from './features/focus/FocusView'
 import { HabitsView } from './features/habits/HabitsView'
 import { TasksView } from './features/tasks/TasksView'
 import { TodayView } from './features/today/TodayView'
+import { SettingsView } from './features/settings/SettingsView'
 import { useUserData } from './data/useUserData'
 import { useI18n } from './i18n/LocaleProvider'
 import type { MessageKey } from './i18n/messages'
@@ -40,7 +41,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const navigate = useNavigate()
   const view = pathToView(location.pathname)
   const { snapshot, loading, error, reload } = useUserData(dataGateway, session?.user.id)
-  const { tasks, habits, points, focusMinutes } = snapshot
+  const { profile, tasks, habits, points, focusMinutes } = snapshot
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [habitAddOpen, setHabitAddOpen] = useState(false)
@@ -48,6 +49,10 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const rate = completionRate(todayTasks)
   const completedHabits = habits.filter((habit) => habit.completedDates.includes(todayKey)).length
   const notify = useCallback((message: string) => { toast.success(message) }, [])
+
+  useEffect(() => {
+    if (profile?.locale && profile.locale !== locale) setLocale(profile.locale)
+  }, [locale, profile?.locale, setLocale])
 
   const toggleTask = async (task: Task) => {
     if (!dataGateway || !session) return
@@ -117,12 +122,27 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     await reload()
   }
 
+  const saveProfile = async (input: UpdateProfileInput) => {
+    if (!dataGateway || !session) return false
+    const result = await dataGateway.saveProfile(session.user.id, input)
+    if (!result.ok) {
+      toast.error('บันทึกการตั้งค่าไม่สำเร็จ', { description: result.error.message })
+      return false
+    }
+    setLocale(input.locale)
+    await reload()
+    notify('บันทึกการตั้งค่าแล้ว')
+    return true
+  }
+
   const handleSignOut = async () => {
     const result = await signOut()
     if (!result.ok) toast.error('ออกจากระบบไม่สำเร็จ', { description: result.message })
   }
 
   const level = Math.floor(points / 100) + 1
+  const accountEmail = session?.user.email ?? ''
+  const displayName = profile?.displayName || accountEmail.split('@')[0] || ''
 
   return (
     <div className="app-shell">
@@ -136,9 +156,9 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <button className="nav-item"><Trophy size={18}/><span>เลเวล {level}</span><em>{points} XP</em></button>
+          {profile?.gamificationEnabled !== false && <button className="nav-item"><Trophy size={18}/><span>เลเวล {level}</span><em>{points} XP</em></button>}
           <button className={view === 'settings' ? 'nav-item active' : 'nav-item'} onClick={() => navigate(viewPaths.settings)}><Settings size={18}/><span>{t('nav.settings')}</span></button>
-          <div className="profile"><div className="avatar">{session?.user.email.slice(0, 1).toUpperCase()}</div><div><strong>{session?.user.email.split('@')[0]}</strong><small>{session?.user.email}</small></div><button type="button" className="grid size-8 place-items-center rounded-lg text-muted hover:bg-[#e3e2da] hover:text-ink" onClick={() => void handleSignOut()} aria-label="ออกจากระบบ"><LogOut size={16}/></button></div>
+          <div className="profile"><div className="avatar">{displayName.slice(0, 1).toUpperCase()}</div><div><strong>{displayName}</strong><small>{accountEmail}</small></div><button type="button" className="grid size-8 place-items-center rounded-lg text-muted hover:bg-[#e3e2da] hover:text-ink" onClick={() => void handleSignOut()} aria-label="ออกจากระบบ"><LogOut size={16}/></button></div>
         </div>
       </aside>
 
@@ -152,14 +172,14 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
         <section className="content">
           {loading ? <DataLoading/> : error ? <DataLoadError message={error} onRetry={() => void reload()}/> : <Routes>
             <Route path="/" element={<Navigate to={viewPaths.today} replace/>}/>
-            <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={session?.user.email.split('@')[0] ?? ''} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => toast.info('AI Coach จะเปิดใช้เมื่อ Edge Function พร้อม')} />}/>
+            <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={displayName} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => toast.info('AI Coach จะเปิดใช้เมื่อ Edge Function พร้อม')} />}/>
             <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} onTask={toggleTask}/>}/>
             <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
             <Route path={viewPaths.goals} element={<PlaceholderView eyebrow="เป้าหมายระยะยาว" title="เป้าหมาย" detail="เชื่อมสิ่งที่อยากเปลี่ยนให้เป็น Milestone งาน และเวลาในปฏิทิน"/>}/>
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabit={toggleHabit} onAdd={() => setHabitAddOpen(true)}/>}/>
             <Route path={viewPaths.focus} element={<FocusView tasks={tasks} notify={notify} onComplete={recordFocus}/>}/>
             <Route path={viewPaths.insights} element={<InsightsView tasks={tasks} habits={habits} points={points} focusMinutes={focusMinutes}/>}/>
-            <Route path={viewPaths.settings} element={<PlaceholderView eyebrow="การตั้งค่าส่วนตัว" title={t('nav.settings')} detail="จัดการบัญชี ภาษา การแจ้งเตือน การเชื่อมต่อ และข้อมูลของคุณ"/>}/>
+            <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} onSave={saveProfile}/>}/>
             <Route path="*" element={<Navigate to={viewPaths.today} replace/>}/>
           </Routes>}
         </section>

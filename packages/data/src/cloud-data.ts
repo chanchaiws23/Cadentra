@@ -1,8 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Habit, ItemStatus, Priority, Task } from '@cadentra/domain'
+import type { Habit, ItemStatus, Priority, Task, UserProfile } from '@cadentra/domain'
 import { dataError, type DataResult } from './repository'
 
 export interface UserDataSnapshot {
+  profile: UserProfile | null
   tasks: Task[]
   habits: Habit[]
   points: number
@@ -24,8 +25,11 @@ export interface CreateHabitInput {
   unit: string
 }
 
+export type UpdateProfileInput = Omit<UserProfile, 'id'>
+
 export interface UserDataGateway {
   load(userId: string, focusSince: string, localDate: string): Promise<DataResult<UserDataSnapshot>>
+  saveProfile(userId: string, input: UpdateProfileInput): Promise<DataResult<void>>
   createTask(userId: string, input: CreateTaskInput): Promise<DataResult<void>>
   setTaskStatus(userId: string, taskId: string, status: ItemStatus): Promise<DataResult<void>>
   softDeleteTask(userId: string, taskId: string): Promise<DataResult<void>>
@@ -61,6 +65,26 @@ interface HabitRow {
 interface HabitCheckInRow {
   habit_id: string
   local_date: string
+}
+
+interface ProfileRow {
+  id: string
+  display_name: string
+  timezone: string
+  locale: 'th' | 'en'
+  gamification_enabled: boolean
+  health_ai_consent: boolean
+}
+
+export function mapProfileRow(row: ProfileRow | null): UserProfile | null {
+  return row ? {
+    id: row.id,
+    displayName: row.display_name,
+    timezone: row.timezone,
+    locale: row.locale,
+    gamificationEnabled: row.gamification_enabled,
+    healthAiConsent: row.health_ai_consent,
+  } : null
 }
 
 export function mapTaskRow(row: TaskRow): Task | null {
@@ -130,24 +154,39 @@ function ok(): DataResult<void> {
 export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataGateway {
   return {
     async load(userId, focusSince, localDate) {
-      const [tasks, habits, checkIns, points, focusSessions] = await Promise.all([
+      const [profile, tasks, habits, checkIns, points, focusSessions] = await Promise.all([
+        client.from('profiles').select('id,display_name,timezone,locale,gamification_enabled,health_ai_consent').eq('id', userId).maybeSingle(),
         client.from('tasks').select('id,user_id,title,starts_at,ends_at,category,priority,status,goal_id,recurrence_rule').eq('user_id', userId).is('deleted_at', null).order('starts_at'),
         client.from('habits').select('id,user_id,title,cue,target,unit').eq('user_id', userId).is('deleted_at', null).order('created_at'),
         client.from('habit_checkins').select('habit_id,local_date').eq('user_id', userId).order('local_date'),
         client.from('point_transactions').select('amount').eq('user_id', userId),
         client.from('focus_sessions').select('elapsed_seconds').eq('user_id', userId).gte('created_at', focusSince),
       ])
-      const error = tasks.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error
+      const error = profile.error ?? tasks.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error
       if (error) return failure(error)
       return {
         ok: true,
         value: {
+          profile: mapProfileRow(profile.data as ProfileRow | null),
           tasks: (tasks.data as TaskRow[]).map(mapTaskRow).filter((task): task is Task => Boolean(task)),
           habits: buildHabits(habits.data as HabitRow[], checkIns.data as HabitCheckInRow[], localDate),
           points: (points.data as { amount: number }[]).reduce((total, entry) => total + entry.amount, 0),
           focusMinutes: Math.floor((focusSessions.data as { elapsed_seconds: number }[]).reduce((total, entry) => total + entry.elapsed_seconds, 0) / 60),
         },
       }
+    },
+
+    async saveProfile(userId, input) {
+      const { error } = await client.from('profiles').upsert({
+        id: userId,
+        display_name: input.displayName,
+        timezone: input.timezone,
+        locale: input.locale,
+        gamification_enabled: input.gamificationEnabled,
+        health_ai_consent: input.healthAiConsent,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' })
+      return error ? failure(error) : ok()
     },
 
     async createTask(userId, input) {
