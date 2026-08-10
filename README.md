@@ -24,6 +24,13 @@ npm run dev
 
 Run the complete validation suite with `npm run check`.
 
+## Development workflow
+
+`main` and `develop` are the only permanent branches. Each independently testable
+change is developed on a short-lived `feature/*`, `fix/*`, or `chore/*` branch and
+merged into `develop` through a pull request after CI passes. Only the repository
+owner promotes `develop` to `main`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Repository layout
 
 - `apps/web` — responsive React application
@@ -44,4 +51,3 @@ when Supabase is not configured.
 
 This is a public source-visible repository, **not open source**. No rights to
 use, copy, modify, or redistribute the code are granted. See [LICENSE](LICENSE).
-
