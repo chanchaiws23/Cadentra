@@ -68,9 +68,11 @@ export interface UserDataGateway {
   createGoal(userId: string, input: CreateGoalInput): Promise<DataResult<void>>
   setGoalStatus(userId: string, goalId: string, status: ItemStatus): Promise<DataResult<void>>
   softDeleteGoal(userId: string, goalId: string): Promise<DataResult<void>>
+  restoreGoal(userId: string, goalId: string): Promise<DataResult<void>>
   createMilestone(userId: string, input: CreateMilestoneInput): Promise<DataResult<void>>
   setMilestoneStatus(userId: string, milestoneId: string, status: ItemStatus): Promise<DataResult<void>>
   softDeleteMilestone(userId: string, milestoneId: string): Promise<DataResult<void>>
+  restoreMilestone(userId: string, milestoneId: string): Promise<DataResult<void>>
   setTaskStatus(userId: string, taskId: string, status: ItemStatus, expectedUpdatedAt?: string): Promise<DataResult<void>>
   setTaskOccurrenceStatus(userId: string, taskId: string, localDate: string, status: ItemStatus): Promise<DataResult<void>>
   softDeleteTask(userId: string, taskId: string): Promise<DataResult<void>>
@@ -360,6 +362,18 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
       return goal.error || milestones.error ? failure(goal.error ?? milestones.error) : ok()
     },
 
+    async restoreGoal(userId, goalId) {
+      const deletedGoal = await client.from('goals').select('deleted_at').eq('id', goalId).eq('user_id', userId).maybeSingle()
+      if (deletedGoal.error) return failure(deletedGoal.error)
+      const deletedAt = deletedGoal.data?.deleted_at
+      const now = new Date().toISOString()
+      const goal = await client.from('goals').update({ deleted_at: null, updated_at: now }).eq('id', goalId).eq('user_id', userId)
+      if (goal.error) return failure(goal.error)
+      if (!deletedAt) return ok()
+      const milestones = await client.from('milestones').update({ deleted_at: null, updated_at: now }).eq('goal_id', goalId).eq('user_id', userId).eq('deleted_at', deletedAt)
+      return milestones.error ? failure(milestones.error) : ok()
+    },
+
     async createMilestone(userId, input) {
       const { error } = await client.from('milestones').insert({ id: input.entityId, user_id: userId, goal_id: input.goalId, title: input.title, target_date: input.targetDate ?? null, sort_order: input.sortOrder, idempotency_key: input.idempotencyKey })
       return idempotentWrite(error)
@@ -372,6 +386,11 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
 
     async softDeleteMilestone(userId, milestoneId) {
       const { error } = await client.from('milestones').update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', milestoneId).eq('user_id', userId)
+      return error ? failure(error) : ok()
+    },
+
+    async restoreMilestone(userId, milestoneId) {
+      const { error } = await client.from('milestones').update({ deleted_at: null, updated_at: new Date().toISOString() }).eq('id', milestoneId).eq('user_id', userId)
       return error ? failure(error) : ok()
     },
 

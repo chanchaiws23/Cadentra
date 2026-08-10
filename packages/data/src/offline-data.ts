@@ -1,4 +1,4 @@
-import type { ItemStatus, Task } from '@cadentra/domain'
+import type { Goal, ItemStatus, Milestone, Task } from '@cadentra/domain'
 import { calculateCurrentStreak, type CreateGoalInput, type CreateHabitInput, type CreateMilestoneInput, type CreateTaskInput, type UpdateProfileInput, type UserDataGateway, type UserDataSnapshot } from './cloud-data'
 import { dataError, type DataResult } from './repository'
 
@@ -14,9 +14,11 @@ type PendingMutation = { conflict?: string } & (
   | { id: string; type: 'goal.create'; input: CreateGoalInput }
   | { id: string; type: 'goal.status'; goalId: string; status: ItemStatus }
   | { id: string; type: 'goal.delete'; goalId: string }
+  | { id: string; type: 'goal.restore'; goalId: string }
   | { id: string; type: 'milestone.create'; input: CreateMilestoneInput }
   | { id: string; type: 'milestone.status'; milestoneId: string; status: ItemStatus }
   | { id: string; type: 'milestone.delete'; milestoneId: string }
+  | { id: string; type: 'milestone.restore'; milestoneId: string }
   | { id: string; type: 'task.status'; taskId: string; status: ItemStatus; expectedUpdatedAt?: string }
   | { id: string; type: 'task.occurrence-status'; taskId: string; localDate: string; status: ItemStatus }
   | { id: string; type: 'task.delete'; taskId: string }
@@ -30,6 +32,8 @@ type PendingMutation = { conflict?: string } & (
 interface CachedUserData {
   snapshot: UserDataSnapshot
   deletedTasks: Task[]
+  deletedGoals: { goal: Goal; milestones: Milestone[] }[]
+  deletedMilestones: Milestone[]
 }
 
 export interface OfflineGatewayOptions {
@@ -50,7 +54,7 @@ function readJson<T>(storage: StorageAdapter, key: string, fallback: T): T {
 }
 
 function defaultCache(): CachedUserData {
-  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0 }, deletedTasks: [] }
+  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0 }, deletedTasks: [], deletedGoals: [], deletedMilestones: [] }
 }
 
 export function createOfflineUserDataGateway(
@@ -67,6 +71,8 @@ export function createOfflineUserDataGateway(
     cache.snapshot.milestones ??= []
     cache.snapshot.taskOccurrences ??= []
     cache.deletedTasks ??= []
+    cache.deletedGoals ??= []
+    cache.deletedMilestones ??= []
     return cache
   }
   const writeCache = (userId: string, cache: CachedUserData) => storage.setItem(cacheKey(userId), JSON.stringify(cache))
@@ -100,10 +106,23 @@ export function createOfflineUserDataGateway(
         if (goal) goal.status = mutation.status
         break
       }
-      case 'goal.delete':
+      case 'goal.delete': {
+        const goal = snapshot.goals.find((entry) => entry.id === mutation.goalId)
+        const milestones = snapshot.milestones.filter((entry) => entry.goalId === mutation.goalId)
+        if (goal) cache.deletedGoals = [...cache.deletedGoals.filter((entry) => entry.goal.id !== goal.id), { goal, milestones }]
         snapshot.goals = snapshot.goals.filter((entry) => entry.id !== mutation.goalId)
         snapshot.milestones = snapshot.milestones.filter((entry) => entry.goalId !== mutation.goalId)
         break
+      }
+      case 'goal.restore': {
+        const deleted = cache.deletedGoals.find((entry) => entry.goal.id === mutation.goalId)
+        if (deleted && !snapshot.goals.some((entry) => entry.id === deleted.goal.id)) {
+          snapshot.goals.push(deleted.goal)
+          snapshot.milestones.push(...deleted.milestones.filter((milestone) => !snapshot.milestones.some((entry) => entry.id === milestone.id)))
+        }
+        cache.deletedGoals = cache.deletedGoals.filter((entry) => entry.goal.id !== mutation.goalId)
+        break
+      }
       case 'milestone.create':
         snapshot.milestones.push({ id: mutation.input.entityId!, userId, goalId: mutation.input.goalId, title: mutation.input.title, targetDate: mutation.input.targetDate, status: 'planned', sortOrder: mutation.input.sortOrder, updatedAt: new Date().toISOString() })
         break
@@ -112,9 +131,18 @@ export function createOfflineUserDataGateway(
         if (milestone) milestone.status = mutation.status
         break
       }
-      case 'milestone.delete':
+      case 'milestone.delete': {
+        const milestone = snapshot.milestones.find((entry) => entry.id === mutation.milestoneId)
+        if (milestone) cache.deletedMilestones = [...cache.deletedMilestones.filter((entry) => entry.id !== milestone.id), milestone]
         snapshot.milestones = snapshot.milestones.filter((entry) => entry.id !== mutation.milestoneId)
         break
+      }
+      case 'milestone.restore': {
+        const milestone = cache.deletedMilestones.find((entry) => entry.id === mutation.milestoneId)
+        if (milestone && !snapshot.milestones.some((entry) => entry.id === milestone.id)) snapshot.milestones.push(milestone)
+        cache.deletedMilestones = cache.deletedMilestones.filter((entry) => entry.id !== mutation.milestoneId)
+        break
+      }
       case 'task.status': {
         const task = snapshot.tasks.find((entry) => entry.id === mutation.taskId)
         if (task) task.status = mutation.status
@@ -178,9 +206,11 @@ export function createOfflineUserDataGateway(
       case 'goal.create': return remote.createGoal(userId, mutation.input)
       case 'goal.status': return remote.setGoalStatus(userId, mutation.goalId, mutation.status)
       case 'goal.delete': return remote.softDeleteGoal(userId, mutation.goalId)
+      case 'goal.restore': return remote.restoreGoal(userId, mutation.goalId)
       case 'milestone.create': return remote.createMilestone(userId, mutation.input)
       case 'milestone.status': return remote.setMilestoneStatus(userId, mutation.milestoneId, mutation.status)
       case 'milestone.delete': return remote.softDeleteMilestone(userId, mutation.milestoneId)
+      case 'milestone.restore': return remote.restoreMilestone(userId, mutation.milestoneId)
       case 'task.status': return remote.setTaskStatus(userId, mutation.taskId, mutation.status, mutation.expectedUpdatedAt)
       case 'task.occurrence-status': return remote.setTaskOccurrenceStatus(userId, mutation.taskId, mutation.localDate, mutation.status)
       case 'task.delete': return remote.softDeleteTask(userId, mutation.taskId)
@@ -230,7 +260,7 @@ export function createOfflineUserDataGateway(
         await syncPending(userId)
         const result = await remote.load(userId, focusSince, localDate)
         if (result.ok) {
-          writeCache(userId, { snapshot: result.value, deletedTasks: [] })
+          writeCache(userId, { snapshot: result.value, deletedTasks: [], deletedGoals: [], deletedMilestones: [] })
           return result
         }
         const cached = storage.getItem(cacheKey(userId))
@@ -263,12 +293,14 @@ export function createOfflineUserDataGateway(
     },
     setGoalStatus: (userId, goalId, status) => mutate(userId, { id: createId(), type: 'goal.status', goalId, status }),
     softDeleteGoal: (userId, goalId) => mutate(userId, { id: createId(), type: 'goal.delete', goalId }),
+    restoreGoal: (userId, goalId) => mutate(userId, { id: createId(), type: 'goal.restore', goalId }),
     createMilestone(userId, input) {
       const id = createId()
       return mutate(userId, { id, type: 'milestone.create', input: { ...input, entityId: input.entityId ?? createId(), idempotencyKey: input.idempotencyKey ?? id } })
     },
     setMilestoneStatus: (userId, milestoneId, status) => mutate(userId, { id: createId(), type: 'milestone.status', milestoneId, status }),
     softDeleteMilestone: (userId, milestoneId) => mutate(userId, { id: createId(), type: 'milestone.delete', milestoneId }),
+    restoreMilestone: (userId, milestoneId) => mutate(userId, { id: createId(), type: 'milestone.restore', milestoneId }),
     setTaskStatus: (userId, taskId, status, expectedUpdatedAt) => mutate(userId, { id: createId(), type: 'task.status', taskId, status, expectedUpdatedAt }),
     setTaskOccurrenceStatus: (userId, taskId, localDate, status) => mutate(userId, { id: createId(), type: 'task.occurrence-status', taskId, localDate, status }),
     softDeleteTask: (userId, taskId) => mutate(userId, { id: createId(), type: 'task.delete', taskId }),

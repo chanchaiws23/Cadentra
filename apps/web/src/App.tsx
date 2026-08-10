@@ -4,8 +4,9 @@ import { toast } from 'sonner'
 import {
   AlertTriangle, BarChart3, Bell, CalendarDays, ChevronDown, Cloud, CloudOff,
   Flame, Focus, Gauge, Languages, LayoutList, Menu,
-  LogOut, Plus, Search, Settings, Sparkles,
+  LogOut, Plus, Redo2, Search, Settings, Sparkles,
   Target, Trophy, X,
+  Undo2,
 } from 'lucide-react'
 import { collapseRecurringTasks, completionRate, findScheduleConflicts, pointsForCompletion, type Goal, type Habit, type Milestone, type Task } from '@cadentra/domain'
 import type { SyncIssue, UpdateProfileInput, UserDataGateway } from '@cadentra/data'
@@ -24,6 +25,7 @@ import { useI18n } from './i18n/LocaleProvider'
 import type { MessageKey } from './i18n/messages'
 import { formatMinutes, formatTime, localDateKey, todayKey } from './lib/date'
 import { pathToView, viewPaths, type View } from './routing'
+import { useCommandHistory } from './history/useCommandHistory'
 
 const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] = [
   { id: 'today', labelKey: 'nav.today', icon: Gauge },
@@ -46,30 +48,71 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [habitAddOpen, setHabitAddOpen] = useState(false)
+  const commandHistory = useCommandHistory()
   const todayTasks = tasks.filter((task) => localDateKey(task.start) === todayKey)
   const managedTasks = collapseRecurringTasks(tasks, todayKey)
   const rate = completionRate(todayTasks)
   const completedHabits = habits.filter((habit) => habit.completedDates.includes(todayKey)).length
   const notify = useCallback((message: string) => { toast.success(message) }, [])
 
+  const undoLast = useCallback(async () => {
+    const command = await commandHistory.undo()
+    if (command) toast.info(`ย้อนกลับ · ${command.label}`)
+  }, [commandHistory])
+
+  const redoLast = useCallback(async () => {
+    const command = await commandHistory.redo()
+    if (command) toast.info(`ทำซ้ำ · ${command.label}`)
+  }, [commandHistory])
+
   useEffect(() => {
     if (profile?.locale && profile.locale !== locale) setLocale(profile.locale)
   }, [locale, profile?.locale, setLocale])
 
-  const toggleTask = async (task: Task) => {
-    if (!dataGateway || !session) return
-    const completing = task.status !== 'done'
+  useEffect(() => {
+    commandHistory.clear()
+  }, [commandHistory.clear, session?.user.id])
+
+  useEffect(() => {
+    const handleHistoryShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'z') return
+      const target = event.target as HTMLElement | null
+      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
+      if (event.shiftKey ? !commandHistory.canRedo : !commandHistory.canUndo) return
+      event.preventDefault()
+      void (event.shiftKey ? redoLast() : undoLast())
+    }
+    window.addEventListener('keydown', handleHistoryShortcut)
+    return () => window.removeEventListener('keydown', handleHistoryShortcut)
+  }, [commandHistory.canRedo, commandHistory.canUndo, redoLast, undoLast])
+
+  const applyTaskStatus = async (task: Task, status: Task['status'], pointsAmount: number, pointsReason: string, expectedUpdatedAt?: string) => {
+    if (!dataGateway || !session) return false
     const result = task.sourceTaskId && task.occurrenceDate
-      ? await dataGateway.setTaskOccurrenceStatus(session.user.id, task.sourceTaskId, task.occurrenceDate, completing ? 'done' : 'planned')
-      : await dataGateway.setTaskStatus(session.user.id, task.id, completing ? 'done' : 'planned', task.updatedAt)
+      ? await dataGateway.setTaskOccurrenceStatus(session.user.id, task.sourceTaskId, task.occurrenceDate, status)
+      : await dataGateway.setTaskStatus(session.user.id, task.id, status, expectedUpdatedAt)
     if (!result.ok) {
       if (result.error.code === 'conflict') await reload()
-      return toast.error(result.error.code === 'conflict' ? 'พบข้อมูลชนกัน กรุณาเลือกเวอร์ชัน' : 'บันทึกสถานะงานไม่สำเร็จ', { description: result.error.message })
+      toast.error(result.error.code === 'conflict' ? 'พบข้อมูลชนกัน กรุณาเลือกเวอร์ชัน' : 'บันทึกสถานะงานไม่สำเร็จ', { description: result.error.message })
+      return false
     }
-    const amount = completing ? pointsForCompletion(task.priority) : -pointsForCompletion(task.priority)
-    const pointsResult = await dataGateway.recordPoints(session.user.id, 'task', task.sourceTaskId ?? task.id, amount, completing ? 'task_completed' : 'task_reopened')
+    const pointsResult = await dataGateway.recordPoints(session.user.id, 'task', task.sourceTaskId ?? task.id, pointsAmount, pointsReason)
     if (!pointsResult.ok) toast.warning('สถานะงานถูกบันทึก แต่คะแนนยังไม่อัปเดต')
     await reload()
+    return true
+  }
+
+  const toggleTask = async (task: Task) => {
+    const completing = task.status !== 'done'
+    const nextStatus: Task['status'] = completing ? 'done' : 'planned'
+    const pointsAmount = completing ? pointsForCompletion(task.priority) : -pointsForCompletion(task.priority)
+    const changed = await applyTaskStatus(task, nextStatus, pointsAmount, completing ? 'task_completed' : 'task_reopened', task.updatedAt)
+    if (!changed) return
+    commandHistory.push({
+      label: completing ? `ทำ “${task.title}” สำเร็จ` : `เปิด “${task.title}” อีกครั้ง`,
+      undo: () => applyTaskStatus(task, task.status, -pointsAmount, 'task_status_undone'),
+      redo: () => applyTaskStatus(task, nextStatus, pointsAmount, 'task_status_redone'),
+    })
     if (completing) notify(`ทำสำเร็จ · +${pointsForCompletion(task.priority)} คะแนน`)
     else toast.info('ย้ายกลับไปยังแผนแล้ว')
   }
@@ -104,18 +147,47 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     await reload(); notify('สร้างเป้าหมายแล้ว')
   }
 
-  const toggleGoal = async (goal: Goal) => {
-    if (!dataGateway || !session) return
-    const result = await dataGateway.setGoalStatus(session.user.id, goal.id, goal.status === 'done' ? 'planned' : 'done')
-    if (!result.ok) return void toast.error('อัปเดตเป้าหมายไม่สำเร็จ', { description: result.error.message })
+  const applyGoalStatus = async (goalId: string, status: Goal['status']) => {
+    if (!dataGateway || !session) return false
+    const result = await dataGateway.setGoalStatus(session.user.id, goalId, status)
+    if (!result.ok) {
+      toast.error('อัปเดตเป้าหมายไม่สำเร็จ', { description: result.error.message })
+      return false
+    }
     await reload()
+    return true
+  }
+
+  const toggleGoal = async (goal: Goal) => {
+    const nextStatus: Goal['status'] = goal.status === 'done' ? 'planned' : 'done'
+    if (!await applyGoalStatus(goal.id, nextStatus)) return
+    commandHistory.push({
+      label: `เปลี่ยนสถานะเป้าหมาย “${goal.title}”`,
+      undo: () => applyGoalStatus(goal.id, goal.status),
+      redo: () => applyGoalStatus(goal.id, nextStatus),
+    })
   }
 
   const deleteGoal = async (goal: Goal) => {
     if (!dataGateway || !session) return
     const result = await dataGateway.softDeleteGoal(session.user.id, goal.id)
     if (!result.ok) return void toast.error('ลบเป้าหมายไม่สำเร็จ', { description: result.error.message })
-    await reload(); notify('ลบเป้าหมายแล้ว')
+    await reload()
+    const deleteCommand = {
+      label: `ลบเป้าหมาย “${goal.title}”`,
+      undo: async () => {
+        const restoreResult = await dataGateway.restoreGoal(session.user.id, goal.id)
+        if (!restoreResult.ok) { toast.error('กู้คืนเป้าหมายไม่สำเร็จ', { description: restoreResult.error.message }); return false }
+        await reload(); return true
+      },
+      redo: async () => {
+        const deleteResult = await dataGateway.softDeleteGoal(session.user.id, goal.id)
+        if (!deleteResult.ok) { toast.error('ลบเป้าหมายไม่สำเร็จ', { description: deleteResult.error.message }); return false }
+        await reload(); return true
+      },
+    }
+    commandHistory.push(deleteCommand)
+    toast.success('ลบเป้าหมายแล้ว', { action: { label: 'เลิกทำ', onClick: () => void commandHistory.undo(deleteCommand) } })
   }
 
   const createMilestone = async (goalId: string, title: string, targetDate: string | undefined, sortOrder: number) => {
@@ -125,11 +197,25 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     await reload(); notify('เพิ่ม Milestone แล้ว')
   }
 
-  const toggleMilestone = async (milestone: Milestone) => {
-    if (!dataGateway || !session) return
-    const result = await dataGateway.setMilestoneStatus(session.user.id, milestone.id, milestone.status === 'done' ? 'planned' : 'done')
-    if (!result.ok) return void toast.error('อัปเดต Milestone ไม่สำเร็จ', { description: result.error.message })
+  const applyMilestoneStatus = async (milestoneId: string, status: Milestone['status']) => {
+    if (!dataGateway || !session) return false
+    const result = await dataGateway.setMilestoneStatus(session.user.id, milestoneId, status)
+    if (!result.ok) {
+      toast.error('อัปเดต Milestone ไม่สำเร็จ', { description: result.error.message })
+      return false
+    }
     await reload()
+    return true
+  }
+
+  const toggleMilestone = async (milestone: Milestone) => {
+    const nextStatus: Milestone['status'] = milestone.status === 'done' ? 'planned' : 'done'
+    if (!await applyMilestoneStatus(milestone.id, nextStatus)) return
+    commandHistory.push({
+      label: `เปลี่ยนสถานะ Milestone “${milestone.title}”`,
+      undo: () => applyMilestoneStatus(milestone.id, milestone.status),
+      redo: () => applyMilestoneStatus(milestone.id, nextStatus),
+    })
   }
 
   const deleteMilestone = async (milestone: Milestone) => {
@@ -137,6 +223,21 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     const result = await dataGateway.softDeleteMilestone(session.user.id, milestone.id)
     if (!result.ok) return void toast.error('ลบ Milestone ไม่สำเร็จ', { description: result.error.message })
     await reload()
+    const deleteCommand = {
+      label: `ลบ Milestone “${milestone.title}”`,
+      undo: async () => {
+        const restoreResult = await dataGateway.restoreMilestone(session.user.id, milestone.id)
+        if (!restoreResult.ok) { toast.error('กู้คืน Milestone ไม่สำเร็จ', { description: restoreResult.error.message }); return false }
+        await reload(); return true
+      },
+      redo: async () => {
+        const deleteResult = await dataGateway.softDeleteMilestone(session.user.id, milestone.id)
+        if (!deleteResult.ok) { toast.error('ลบ Milestone ไม่สำเร็จ', { description: deleteResult.error.message }); return false }
+        await reload(); return true
+      },
+    }
+    commandHistory.push(deleteCommand)
+    toast.success('ลบ Milestone แล้ว', { action: { label: 'เลิกทำ', onClick: () => void commandHistory.undo(deleteCommand) } })
   }
 
   const addHabit = async (title: string, cue: string, target: number, unit: string) => {
@@ -153,17 +254,25 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     const result = await dataGateway.softDeleteTask(session.user.id, taskId)
     if (!result.ok) return toast.error('ลบงานไม่สำเร็จ', { description: result.error.message })
     await reload()
+    const deleteCommand = {
+      label: `ลบงาน “${task.title}”`,
+      undo: async () => {
+        const restoreResult = await dataGateway.restoreTask(session.user.id, taskId)
+        if (!restoreResult.ok) { toast.error('กู้คืนงานไม่สำเร็จ', { description: restoreResult.error.message }); return false }
+        await reload(); return true
+      },
+      redo: async () => {
+        const deleteResult = await dataGateway.softDeleteTask(session.user.id, taskId)
+        if (!deleteResult.ok) { toast.error('ลบงานไม่สำเร็จ', { description: deleteResult.error.message }); return false }
+        await reload(); return true
+      },
+    }
+    commandHistory.push(deleteCommand)
     toast.success('ลบงานแล้ว', {
       description: task.title,
-      action: {
-        label: 'เลิกทำ',
-        onClick: () => void dataGateway.restoreTask(session.user.id, taskId).then(async (restoreResult) => {
-          if (!restoreResult.ok) return toast.error('กู้คืนงานไม่สำเร็จ', { description: restoreResult.error.message })
-          await reload()
-        }),
-      },
+      action: { label: 'เลิกทำ', onClick: () => void commandHistory.undo(deleteCommand) },
     })
-  }, [dataGateway, reload, session])
+  }, [commandHistory, dataGateway, reload, session])
 
   const recordFocus = async (task: Task | undefined, plannedMinutes: number, elapsedSeconds: number) => {
     if (!dataGateway || !session) return
@@ -258,7 +367,15 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
         <header className="topbar">
           <button className="icon-button mobile-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="เปิดเมนู"><Menu/></button>
           <div className="search"><Search size={16}/><span>{t('top.search')}</span><kbd>⌘ K</kbd></div>
-          <div className="top-actions"><button className="language-button" onClick={() => setLocale(locale === 'th' ? 'en' : 'th')} aria-label={t('action.language')}><Languages size={16}/>{locale.toUpperCase()}</button><button className="icon-button" aria-label={t('top.notifications')}><Bell size={19}/><i/></button><button className="primary compact" onClick={() => setAddOpen(true)}><Plus size={17}/> {t('action.add')}</button></div>
+          <div className="top-actions">
+            <div className="flex items-center" role="group" aria-label="ประวัติการเปลี่ยนแปลง">
+              <button className="icon-button disabled:cursor-not-allowed disabled:opacity-30" disabled={!commandHistory.canUndo || commandHistory.busy} onClick={() => void undoLast()} aria-label={commandHistory.undoLabel ? `ย้อนกลับ: ${commandHistory.undoLabel}` : 'ไม่มีรายการให้ย้อนกลับ'} title={commandHistory.undoLabel ? `ย้อนกลับ: ${commandHistory.undoLabel}` : 'ไม่มีรายการให้ย้อนกลับ'}><Undo2 size={17}/></button>
+              <button className="icon-button disabled:cursor-not-allowed disabled:opacity-30" disabled={!commandHistory.canRedo || commandHistory.busy} onClick={() => void redoLast()} aria-label={commandHistory.redoLabel ? `ทำซ้ำ: ${commandHistory.redoLabel}` : 'ไม่มีรายการให้ทำซ้ำ'} title={commandHistory.redoLabel ? `ทำซ้ำ: ${commandHistory.redoLabel}` : 'ไม่มีรายการให้ทำซ้ำ'}><Redo2 size={17}/></button>
+            </div>
+            <button className="language-button" onClick={() => setLocale(locale === 'th' ? 'en' : 'th')} aria-label={t('action.language')}><Languages size={16}/>{locale.toUpperCase()}</button>
+            <button className="icon-button" aria-label={t('top.notifications')}><Bell size={19}/><i/></button>
+            <button className="primary compact" onClick={() => setAddOpen(true)}><Plus size={17}/> {t('action.add')}</button>
+          </div>
         </header>
 
         <section className="content">
