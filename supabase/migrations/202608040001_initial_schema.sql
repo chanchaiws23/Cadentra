@@ -14,6 +14,26 @@ create table public.profiles (
   updated_at timestamptz not null default now()
 );
 
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id, display_name)
+  values (new.id, coalesce(new.raw_user_meta_data ->> 'display_name', ''))
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+revoke all on function public.handle_new_user() from public;
+
+create trigger create_profile_after_signup
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
 create table public.goals (
   id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
   title text not null, description text, target_date date, status item_status not null default 'planned',

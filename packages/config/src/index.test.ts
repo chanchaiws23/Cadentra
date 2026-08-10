@@ -25,4 +25,11 @@ describe('parseWebEnvironment', () => {
       VITE_SUPABASE_ANON_KEY: 'public-anon-key',
     })).toThrow('Cloud endpoints must use HTTPS')
   })
+
+  it('rejects a Supabase REST endpoint instead of the project URL', () => {
+    expect(() => parseWebEnvironment({
+      VITE_SUPABASE_URL: 'https://project.supabase.co/rest/v1/',
+      VITE_SUPABASE_ANON_KEY: 'public-anon-key',
+    })).toThrow('Use the Supabase project URL without /rest/v1')
+  })
 })
