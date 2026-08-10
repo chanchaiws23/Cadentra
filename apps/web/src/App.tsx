@@ -137,14 +137,46 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     const result = await dataGateway.createTask(session.user.id, { title, start: start.toISOString(), end: end.toISOString(), goalId, recurrenceRule })
     if (!result.ok) return toast.error('เพิ่มงานไม่สำเร็จ', { description: result.error.message })
     await reload()
-    setAddOpen(false); notify('เพิ่มลงในวันนี้แล้ว')
+    setAddOpen(false)
+    const taskId = result.value
+    const createCommand = {
+      label: `เพิ่มงาน “${title}”`,
+      undo: async () => {
+        const deleteResult = await dataGateway.softDeleteTask(session.user.id, taskId)
+        if (!deleteResult.ok) { toast.error('ย้อนการเพิ่มงานไม่สำเร็จ', { description: deleteResult.error.message }); return false }
+        await reload(); return true
+      },
+      redo: async () => {
+        const restoreResult = await dataGateway.restoreTask(session.user.id, taskId)
+        if (!restoreResult.ok) { toast.error('คืนงานที่เพิ่มไม่สำเร็จ', { description: restoreResult.error.message }); return false }
+        await reload(); return true
+      },
+    }
+    commandHistory.push(createCommand)
+    toast.success('เพิ่มลงในวันนี้แล้ว', { action: { label: 'เลิกทำ', onClick: () => void commandHistory.undo(createCommand) } })
   }
 
   const createGoal = async (title: string, description: string, targetDate?: string) => {
     if (!dataGateway || !session) return
     const result = await dataGateway.createGoal(session.user.id, { title, description, targetDate })
     if (!result.ok) return void toast.error('สร้างเป้าหมายไม่สำเร็จ', { description: result.error.message })
-    await reload(); notify('สร้างเป้าหมายแล้ว')
+    await reload()
+    const goalId = result.value
+    const createCommand = {
+      label: `สร้างเป้าหมาย “${title}”`,
+      undo: async () => {
+        const deleteResult = await dataGateway.softDeleteGoal(session.user.id, goalId)
+        if (!deleteResult.ok) { toast.error('ย้อนการสร้างเป้าหมายไม่สำเร็จ', { description: deleteResult.error.message }); return false }
+        await reload(); return true
+      },
+      redo: async () => {
+        const restoreResult = await dataGateway.restoreGoal(session.user.id, goalId)
+        if (!restoreResult.ok) { toast.error('คืนเป้าหมายไม่สำเร็จ', { description: restoreResult.error.message }); return false }
+        await reload(); return true
+      },
+    }
+    commandHistory.push(createCommand)
+    toast.success('สร้างเป้าหมายแล้ว', { action: { label: 'เลิกทำ', onClick: () => void commandHistory.undo(createCommand) } })
   }
 
   const applyGoalStatus = async (goalId: string, status: Goal['status']) => {
@@ -194,7 +226,23 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     if (!dataGateway || !session) return
     const result = await dataGateway.createMilestone(session.user.id, { goalId, title, targetDate, sortOrder })
     if (!result.ok) return void toast.error('เพิ่ม Milestone ไม่สำเร็จ', { description: result.error.message })
-    await reload(); notify('เพิ่ม Milestone แล้ว')
+    await reload()
+    const milestoneId = result.value
+    const createCommand = {
+      label: `เพิ่ม Milestone “${title}”`,
+      undo: async () => {
+        const deleteResult = await dataGateway.softDeleteMilestone(session.user.id, milestoneId)
+        if (!deleteResult.ok) { toast.error('ย้อนการเพิ่ม Milestone ไม่สำเร็จ', { description: deleteResult.error.message }); return false }
+        await reload(); return true
+      },
+      redo: async () => {
+        const restoreResult = await dataGateway.restoreMilestone(session.user.id, milestoneId)
+        if (!restoreResult.ok) { toast.error('คืน Milestone ไม่สำเร็จ', { description: restoreResult.error.message }); return false }
+        await reload(); return true
+      },
+    }
+    commandHistory.push(createCommand)
+    toast.success('เพิ่ม Milestone แล้ว', { action: { label: 'เลิกทำ', onClick: () => void commandHistory.undo(createCommand) } })
   }
 
   const applyMilestoneStatus = async (milestoneId: string, status: Milestone['status']) => {

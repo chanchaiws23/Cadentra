@@ -202,12 +202,12 @@ export function createOfflineUserDataGateway(
   const replay = (userId: string, mutation: PendingMutation): Promise<DataResult<void>> => {
     switch (mutation.type) {
       case 'profile.save': return remote.saveProfile(userId, mutation.input)
-      case 'task.create': return remote.createTask(userId, mutation.input)
-      case 'goal.create': return remote.createGoal(userId, mutation.input)
+      case 'task.create': return remote.createTask(userId, mutation.input).then((result) => result.ok ? { ok: true, value: undefined } : result)
+      case 'goal.create': return remote.createGoal(userId, mutation.input).then((result) => result.ok ? { ok: true, value: undefined } : result)
       case 'goal.status': return remote.setGoalStatus(userId, mutation.goalId, mutation.status)
       case 'goal.delete': return remote.softDeleteGoal(userId, mutation.goalId)
       case 'goal.restore': return remote.restoreGoal(userId, mutation.goalId)
-      case 'milestone.create': return remote.createMilestone(userId, mutation.input)
+      case 'milestone.create': return remote.createMilestone(userId, mutation.input).then((result) => result.ok ? { ok: true, value: undefined } : result)
       case 'milestone.status': return remote.setMilestoneStatus(userId, mutation.milestoneId, mutation.status)
       case 'milestone.delete': return remote.softDeleteMilestone(userId, mutation.milestoneId)
       case 'milestone.restore': return remote.restoreMilestone(userId, mutation.milestoneId)
@@ -283,20 +283,26 @@ export function createOfflineUserDataGateway(
       }
       return result
     },
-    createTask(userId, input) {
+    async createTask(userId, input) {
       const id = createId()
-      return mutate(userId, { id, type: 'task.create', input: { ...input, entityId: input.entityId ?? createId(), idempotencyKey: input.idempotencyKey ?? id } })
+      const entityId = input.entityId ?? createId()
+      const result = await mutate(userId, { id, type: 'task.create', input: { ...input, entityId, idempotencyKey: input.idempotencyKey ?? id } })
+      return result.ok ? { ok: true as const, value: entityId } : result
     },
-    createGoal(userId, input) {
+    async createGoal(userId, input) {
       const id = createId()
-      return mutate(userId, { id, type: 'goal.create', input: { ...input, entityId: input.entityId ?? createId(), idempotencyKey: input.idempotencyKey ?? id } })
+      const entityId = input.entityId ?? createId()
+      const result = await mutate(userId, { id, type: 'goal.create', input: { ...input, entityId, idempotencyKey: input.idempotencyKey ?? id } })
+      return result.ok ? { ok: true as const, value: entityId } : result
     },
     setGoalStatus: (userId, goalId, status) => mutate(userId, { id: createId(), type: 'goal.status', goalId, status }),
     softDeleteGoal: (userId, goalId) => mutate(userId, { id: createId(), type: 'goal.delete', goalId }),
     restoreGoal: (userId, goalId) => mutate(userId, { id: createId(), type: 'goal.restore', goalId }),
-    createMilestone(userId, input) {
+    async createMilestone(userId, input) {
       const id = createId()
-      return mutate(userId, { id, type: 'milestone.create', input: { ...input, entityId: input.entityId ?? createId(), idempotencyKey: input.idempotencyKey ?? id } })
+      const entityId = input.entityId ?? createId()
+      const result = await mutate(userId, { id, type: 'milestone.create', input: { ...input, entityId, idempotencyKey: input.idempotencyKey ?? id } })
+      return result.ok ? { ok: true as const, value: entityId } : result
     },
     setMilestoneStatus: (userId, milestoneId, status) => mutate(userId, { id: createId(), type: 'milestone.status', milestoneId, status }),
     softDeleteMilestone: (userId, milestoneId) => mutate(userId, { id: createId(), type: 'milestone.delete', milestoneId }),

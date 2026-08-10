@@ -31,12 +31,12 @@ function remoteGateway(): UserDataGateway {
     saveProfile: vi.fn(async () => ({ ok: true as const, value: undefined })),
     exportAccount: vi.fn(async (userId) => ({ ok: true as const, value: { exportedAt: '', userId, data: {} } })),
     deleteAccount: vi.fn(async () => ({ ok: true as const, value: undefined })),
-    createTask: vi.fn(async () => ({ ok: true as const, value: undefined })),
-    createGoal: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    createTask: vi.fn(async (_userId, input) => ({ ok: true as const, value: input.entityId! })),
+    createGoal: vi.fn(async (_userId, input) => ({ ok: true as const, value: input.entityId! })),
     setGoalStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
     softDeleteGoal: vi.fn(async () => ({ ok: true as const, value: undefined })),
     restoreGoal: vi.fn(async () => ({ ok: true as const, value: undefined })),
-    createMilestone: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    createMilestone: vi.fn(async (_userId, input) => ({ ok: true as const, value: input.entityId! })),
     setMilestoneStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
     softDeleteMilestone: vi.fn(async () => ({ ok: true as const, value: undefined })),
     restoreMilestone: vi.fn(async () => ({ ok: true as const, value: undefined })),
@@ -76,7 +76,7 @@ describe('offline user data gateway', () => {
     await gateway.load('user-1', '2026-08-10T00:00:00Z', '2026-08-10')
 
     online = false
-    await gateway.createTask('user-1', {
+    const createdTask = await gateway.createTask('user-1', {
       title: 'Offline task', start: '2026-08-10T03:00:00.000Z', end: '2026-08-10T04:00:00.000Z',
     })
     await gateway.setHabitCheckIn('user-1', 'habit-1', '2026-08-10', true)
@@ -86,6 +86,7 @@ describe('offline user data gateway', () => {
     expect(optimistic.ok && optimistic.value.tasks.some((task) => task.title === 'Offline task')).toBe(true)
     expect(optimistic.ok && optimistic.value.habits[0].completedDates).toContain('2026-08-10')
     expect(optimistic.ok && optimistic.value.points).toBe(8)
+    expect(createdTask).toEqual({ ok: true, value: 'generated-2' })
     expect(gateway.pendingCount?.('user-1')).toBe(3)
 
     online = true
@@ -149,13 +150,15 @@ describe('offline user data gateway', () => {
     const gateway = createOfflineUserDataGateway(remote, new MemoryStorage(), { isOnline: () => online, createId: () => `goal-id-${++id}` })
     await gateway.load('user-1', '', '2026-08-10')
     online = false
-    await gateway.createGoal('user-1', { title: 'Run a marathon', description: 'Finish 42 km' })
-    await gateway.createMilestone('user-1', { goalId: 'goal-id-2', title: 'Run 10 km', sortOrder: 0 })
+    const createdGoal = await gateway.createGoal('user-1', { title: 'Run a marathon', description: 'Finish 42 km' })
+    const createdMilestone = await gateway.createMilestone('user-1', { goalId: 'goal-id-2', title: 'Run 10 km', sortOrder: 0 })
 
     const cached = await gateway.load('user-1', '', '2026-08-10')
     expect(cached.ok && cached.value.goals[0]).toMatchObject({ id: 'goal-id-2', title: 'Run a marathon' })
     expect(cached.ok && cached.value.milestones[0]).toMatchObject({ goalId: 'goal-id-2', title: 'Run 10 km' })
     expect(gateway.pendingCount?.('user-1')).toBe(2)
+    expect(createdGoal).toEqual({ ok: true, value: 'goal-id-2' })
+    expect(createdMilestone).toEqual({ ok: true, value: 'goal-id-4' })
 
     online = true
     await gateway.syncPending?.('user-1')

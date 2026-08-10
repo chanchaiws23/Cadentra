@@ -64,12 +64,12 @@ export interface UserDataGateway {
   saveProfile(userId: string, input: UpdateProfileInput): Promise<DataResult<void>>
   exportAccount(userId: string): Promise<DataResult<AccountExport>>
   deleteAccount(): Promise<DataResult<void>>
-  createTask(userId: string, input: CreateTaskInput): Promise<DataResult<void>>
-  createGoal(userId: string, input: CreateGoalInput): Promise<DataResult<void>>
+  createTask(userId: string, input: CreateTaskInput): Promise<DataResult<string>>
+  createGoal(userId: string, input: CreateGoalInput): Promise<DataResult<string>>
   setGoalStatus(userId: string, goalId: string, status: ItemStatus): Promise<DataResult<void>>
   softDeleteGoal(userId: string, goalId: string): Promise<DataResult<void>>
   restoreGoal(userId: string, goalId: string): Promise<DataResult<void>>
-  createMilestone(userId: string, input: CreateMilestoneInput): Promise<DataResult<void>>
+  createMilestone(userId: string, input: CreateMilestoneInput): Promise<DataResult<string>>
   setMilestoneStatus(userId: string, milestoneId: string, status: ItemStatus): Promise<DataResult<void>>
   softDeleteMilestone(userId: string, milestoneId: string): Promise<DataResult<void>>
   restoreMilestone(userId: string, milestoneId: string): Promise<DataResult<void>>
@@ -241,6 +241,10 @@ function idempotentWrite(error: { message: string; code?: string } | null): Data
   return !error || error.code === '23505' ? ok() : failure(error)
 }
 
+function idempotentCreate(error: { message: string; code?: string } | null, entityId: string): DataResult<string> {
+  return !error || error.code === '23505' ? { ok: true, value: entityId } : failure(error)
+}
+
 export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataGateway {
   return {
     async load(userId, focusSince, localDate) {
@@ -327,8 +331,9 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
     },
 
     async createTask(userId, input) {
+      const entityId = input.entityId ?? crypto.randomUUID()
       const { error } = await client.from('tasks').insert({
-        id: input.entityId,
+        id: entityId,
         user_id: userId,
         title: input.title,
         starts_at: input.start,
@@ -340,12 +345,13 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         recurrence_rule: input.recurrenceRule ?? null,
         idempotency_key: input.idempotencyKey ?? crypto.randomUUID(),
       })
-      return idempotentWrite(error)
+      return idempotentCreate(error, entityId)
     },
 
     async createGoal(userId, input) {
-      const { error } = await client.from('goals').insert({ id: input.entityId, user_id: userId, title: input.title, description: input.description || null, target_date: input.targetDate ?? null, idempotency_key: input.idempotencyKey })
-      return idempotentWrite(error)
+      const entityId = input.entityId ?? crypto.randomUUID()
+      const { error } = await client.from('goals').insert({ id: entityId, user_id: userId, title: input.title, description: input.description || null, target_date: input.targetDate ?? null, idempotency_key: input.idempotencyKey ?? crypto.randomUUID() })
+      return idempotentCreate(error, entityId)
     },
 
     async setGoalStatus(userId, goalId, status) {
@@ -375,8 +381,9 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
     },
 
     async createMilestone(userId, input) {
-      const { error } = await client.from('milestones').insert({ id: input.entityId, user_id: userId, goal_id: input.goalId, title: input.title, target_date: input.targetDate ?? null, sort_order: input.sortOrder, idempotency_key: input.idempotencyKey })
-      return idempotentWrite(error)
+      const entityId = input.entityId ?? crypto.randomUUID()
+      const { error } = await client.from('milestones').insert({ id: entityId, user_id: userId, goal_id: input.goalId, title: input.title, target_date: input.targetDate ?? null, sort_order: input.sortOrder, idempotency_key: input.idempotencyKey ?? crypto.randomUUID() })
+      return idempotentCreate(error, entityId)
     },
 
     async setMilestoneStatus(userId, milestoneId, status) {
