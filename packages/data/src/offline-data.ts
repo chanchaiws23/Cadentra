@@ -8,16 +8,17 @@ export interface StorageAdapter {
   removeItem(key: string): void
 }
 
-type PendingMutation =
+type PendingMutation = { conflict?: string } & (
   | { id: string; type: 'profile.save'; input: UpdateProfileInput }
   | { id: string; type: 'task.create'; input: CreateTaskInput }
-  | { id: string; type: 'task.status'; taskId: string; status: ItemStatus }
+  | { id: string; type: 'task.status'; taskId: string; status: ItemStatus; expectedUpdatedAt?: string }
   | { id: string; type: 'task.delete'; taskId: string }
   | { id: string; type: 'task.restore'; taskId: string }
   | { id: string; type: 'habit.create'; input: CreateHabitInput }
   | { id: string; type: 'habit.checkin'; habitId: string; localDate: string; completed: boolean }
   | { id: string; type: 'points.record'; sourceType: string; sourceId: string; amount: number; reason: string }
   | { id: string; type: 'focus.record'; taskId?: string; plannedMinutes: number; elapsedSeconds: number }
+)
 
 interface CachedUserData {
   snapshot: UserDataSnapshot
@@ -130,7 +131,7 @@ export function createOfflineUserDataGateway(
     switch (mutation.type) {
       case 'profile.save': return remote.saveProfile(userId, mutation.input)
       case 'task.create': return remote.createTask(userId, mutation.input)
-      case 'task.status': return remote.setTaskStatus(userId, mutation.taskId, mutation.status)
+      case 'task.status': return remote.setTaskStatus(userId, mutation.taskId, mutation.status, mutation.expectedUpdatedAt)
       case 'task.delete': return remote.softDeleteTask(userId, mutation.taskId)
       case 'task.restore': return remote.restoreTask(userId, mutation.taskId)
       case 'habit.create': return remote.createHabit(userId, mutation.input)
@@ -145,9 +146,14 @@ export function createOfflineUserDataGateway(
     const queue = readQueue(userId)
     let synced = 0
     for (const mutation of queue) {
+      if (mutation.conflict) {
+        return { ok: false, error: dataError('conflict', mutation.conflict) }
+      }
       const result = await replay(userId, mutation)
       if (!result.ok) {
-        writeQueue(userId, queue.slice(synced))
+        const remaining = queue.slice(synced)
+        if (result.error.code === 'conflict') remaining[0] = { ...mutation, conflict: result.error.message }
+        writeQueue(userId, remaining)
         return result
       }
       synced += 1
@@ -159,6 +165,10 @@ export function createOfflineUserDataGateway(
   async function mutate(userId: string, mutation: PendingMutation): Promise<DataResult<void>> {
     if (!isOnline()) return enqueue(userId, mutation)
     const result = await replay(userId, mutation)
+    if (!result.ok && result.error.code === 'conflict') {
+      enqueue(userId, { ...mutation, conflict: result.error.message })
+      return result
+    }
     return result.ok || !result.error.recoverable ? result : enqueue(userId, mutation)
   }
 
@@ -196,7 +206,7 @@ export function createOfflineUserDataGateway(
       const id = createId()
       return mutate(userId, { id, type: 'task.create', input: { ...input, entityId: input.entityId ?? createId(), idempotencyKey: input.idempotencyKey ?? id } })
     },
-    setTaskStatus: (userId, taskId, status) => mutate(userId, { id: createId(), type: 'task.status', taskId, status }),
+    setTaskStatus: (userId, taskId, status, expectedUpdatedAt) => mutate(userId, { id: createId(), type: 'task.status', taskId, status, expectedUpdatedAt }),
     softDeleteTask: (userId, taskId) => mutate(userId, { id: createId(), type: 'task.delete', taskId }),
     restoreTask: (userId, taskId) => mutate(userId, { id: createId(), type: 'task.restore', taskId }),
     createHabit(userId, input) {
@@ -208,5 +218,29 @@ export function createOfflineUserDataGateway(
     recordFocusSession: (userId, taskId, plannedMinutes, elapsedSeconds) => mutate(userId, { id: createId(), type: 'focus.record', taskId, plannedMinutes, elapsedSeconds }),
     syncPending,
     pendingCount: (userId) => readQueue(userId).length,
+    syncIssues: (userId) => readQueue(userId).filter((mutation) => mutation.conflict).map((mutation) => ({
+      id: mutation.id,
+      kind: 'conflict' as const,
+      title: mutation.type === 'task.status' ? 'สถานะงานมีข้อมูลชนกัน' : 'ข้อมูลรอการตรวจสอบ',
+      detail: mutation.conflict!,
+    })),
+    async resolveSyncIssue(userId, mutationId, resolution) {
+      if (!isOnline()) return { ok: false, error: dataError('offline', 'กรุณาเชื่อมต่ออินเทอร์เน็ตก่อนแก้ข้อมูลชนกัน') }
+      const queue = readQueue(userId)
+      const mutation = queue.find((entry) => entry.id === mutationId)
+      if (!mutation) return { ok: false, error: dataError('not_found', 'ไม่พบรายการที่ต้องแก้ไข') }
+      if (resolution === 'cloud') {
+        writeQueue(userId, queue.filter((entry) => entry.id !== mutationId && !(
+          mutation.type === 'task.status' && entry.type === 'points.record' && entry.sourceType === 'task' && entry.sourceId === mutation.taskId
+        )))
+        return { ok: true, value: undefined }
+      }
+      const result = mutation.type === 'task.status'
+        ? await remote.setTaskStatus(userId, mutation.taskId, mutation.status)
+        : await replay(userId, { ...mutation, conflict: undefined })
+      if (!result.ok) return result
+      writeQueue(userId, queue.filter((entry) => entry.id !== mutationId))
+      return { ok: true, value: undefined }
+    },
   }
 }

@@ -23,6 +23,7 @@ export interface Task {
   status: ItemStatus
   goalId?: string
   recurring?: boolean
+  updatedAt?: string
 }
 
 export interface Habit {
