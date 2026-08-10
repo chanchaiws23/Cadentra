@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
+import { toast } from 'sonner'
 import {
   BarChart3, Bell, Bot, CalendarDays, CheckCircle2, ChevronDown,
   Flame, Focus, Gauge, Languages, LayoutList, Menu, MoreHorizontal,
@@ -8,6 +9,7 @@ import {
 } from 'lucide-react'
 import { completionRate, pointsForCompletion, type AIProposal, type Habit, type Task } from '@cadentra/domain'
 import { PageHeading } from './components/PageHeading'
+import { AppToaster } from './components/AppToaster'
 import { CalendarView } from './features/calendar/CalendarView'
 import { FocusView } from './features/focus/FocusView'
 import { HabitsView } from './features/habits/HabitsView'
@@ -58,7 +60,6 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [coachOpen, setCoachOpen] = useState(false)
-  const [toast, setToast] = useState('')
 
   useEffect(() => localStorage.setItem('cadentra.tasks', JSON.stringify(tasks)), [tasks])
   useEffect(() => localStorage.setItem('cadentra.habits', JSON.stringify(habits)), [habits])
@@ -66,13 +67,14 @@ function App() {
 
   const rate = completionRate(tasks)
   const completedHabits = habits.filter((habit) => habit.completedDates.includes(todayKey)).length
-  const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2600) }
+  const notify = useCallback((message: string) => { toast.success(message) }, [])
 
   const toggleTask = (task: Task) => {
     const completing = task.status !== 'done'
     setTasks((items) => items.map((item) => item.id === task.id ? { ...item, status: completing ? 'done' : 'planned' } : item))
     setPoints((value) => value + (completing ? pointsForCompletion(task.priority) : -pointsForCompletion(task.priority)))
-    notify(completing ? `ทำสำเร็จ · +${pointsForCompletion(task.priority)} คะแนน` : 'ย้ายกลับไปยังแผนแล้ว')
+    if (completing) notify(`ทำสำเร็จ · +${pointsForCompletion(task.priority)} คะแนน`)
+    else toast.info('ย้ายกลับไปยังแผนแล้ว')
   }
 
   const toggleHabit = (habit: Habit) => {
@@ -83,7 +85,8 @@ function App() {
       streak: Math.max(0, item.streak + (complete ? 1 : -1)),
     } : item))
     setPoints((value) => value + (complete ? 8 : -8))
-    notify(complete ? 'รักษาจังหวะได้อีกหนึ่งวัน · +8 คะแนน' : 'ไม่เป็นไร เริ่มใหม่ได้เสมอ')
+    if (complete) notify('รักษาจังหวะได้อีกหนึ่งวัน · +8 คะแนน')
+    else toast.info('ไม่เป็นไร เริ่มใหม่ได้เสมอ')
   }
 
   const addTask = (title: string, time: string, duration: number) => {
@@ -138,7 +141,7 @@ function App() {
       {menuOpen && <button className="scrim" onClick={() => setMenuOpen(false)} aria-label="ปิดเมนู"/>}
       {addOpen && <AddTaskModal onClose={() => setAddOpen(false)} onAdd={addTask}/>} 
       {coachOpen && <CoachPanel tasks={tasks} onClose={() => setCoachOpen(false)} onApply={(proposal) => { setTasks((items) => items.map((item) => { const change = proposal.changes.find((entry) => entry.taskId === item.id && entry.accepted); return change?.after ? { ...item, ...change.after } : item })); setCoachOpen(false); notify('ยืนยันตารางใหม่แล้ว · ย้อนกลับได้จากประวัติ') }}/>} 
-      {toast && <div className="toast"><CheckCircle2 size={18}/>{toast}</div>}
+      <AppToaster/>
     </div>
   )
 }
