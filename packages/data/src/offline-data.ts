@@ -1,5 +1,5 @@
 import type { ItemStatus, Task } from '@cadentra/domain'
-import { calculateCurrentStreak, type CreateHabitInput, type CreateTaskInput, type UpdateProfileInput, type UserDataGateway, type UserDataSnapshot } from './cloud-data'
+import { calculateCurrentStreak, type CreateGoalInput, type CreateHabitInput, type CreateMilestoneInput, type CreateTaskInput, type UpdateProfileInput, type UserDataGateway, type UserDataSnapshot } from './cloud-data'
 import { dataError, type DataResult } from './repository'
 
 export interface StorageAdapter {
@@ -11,6 +11,12 @@ export interface StorageAdapter {
 type PendingMutation = { conflict?: string } & (
   | { id: string; type: 'profile.save'; input: UpdateProfileInput }
   | { id: string; type: 'task.create'; input: CreateTaskInput }
+  | { id: string; type: 'goal.create'; input: CreateGoalInput }
+  | { id: string; type: 'goal.status'; goalId: string; status: ItemStatus }
+  | { id: string; type: 'goal.delete'; goalId: string }
+  | { id: string; type: 'milestone.create'; input: CreateMilestoneInput }
+  | { id: string; type: 'milestone.status'; milestoneId: string; status: ItemStatus }
+  | { id: string; type: 'milestone.delete'; milestoneId: string }
   | { id: string; type: 'task.status'; taskId: string; status: ItemStatus; expectedUpdatedAt?: string }
   | { id: string; type: 'task.delete'; taskId: string }
   | { id: string; type: 'task.restore'; taskId: string }
@@ -43,7 +49,7 @@ function readJson<T>(storage: StorageAdapter, key: string, fallback: T): T {
 }
 
 function defaultCache(): CachedUserData {
-  return { snapshot: { profile: null, tasks: [], habits: [], points: 0, focusMinutes: 0 }, deletedTasks: [] }
+  return { snapshot: { profile: null, tasks: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0 }, deletedTasks: [] }
 }
 
 export function createOfflineUserDataGateway(
@@ -54,7 +60,13 @@ export function createOfflineUserDataGateway(
   const isOnline = options.isOnline ?? (() => typeof navigator === 'undefined' || navigator.onLine)
   const createId = options.createId ?? (() => crypto.randomUUID())
   let activeUserId: string | undefined
-  const readCache = (userId: string) => readJson(storage, cacheKey(userId), defaultCache())
+  const readCache = (userId: string) => {
+    const cache = readJson(storage, cacheKey(userId), defaultCache())
+    cache.snapshot.goals ??= []
+    cache.snapshot.milestones ??= []
+    cache.deletedTasks ??= []
+    return cache
+  }
   const writeCache = (userId: string, cache: CachedUserData) => storage.setItem(cacheKey(userId), JSON.stringify(cache))
   const readQueue = (userId: string) => readJson<PendingMutation[]>(storage, queueKey(userId), [])
   const writeQueue = (userId: string, queue: PendingMutation[]) => {
@@ -73,9 +85,32 @@ export function createOfflineUserDataGateway(
         snapshot.tasks.push({
           id: mutation.input.entityId!, userId, title: mutation.input.title,
           start: mutation.input.start, end: mutation.input.end,
-          category: mutation.input.category ?? 'ทั่วไป', priority: mutation.input.priority ?? 'medium', status: 'planned',
+          category: mutation.input.category ?? 'ทั่วไป', priority: mutation.input.priority ?? 'medium', status: 'planned', goalId: mutation.input.goalId,
         })
         snapshot.tasks.sort((a, b) => a.start.localeCompare(b.start))
+        break
+      case 'goal.create':
+        snapshot.goals.push({ id: mutation.input.entityId!, userId, title: mutation.input.title, description: mutation.input.description, targetDate: mutation.input.targetDate, status: 'planned', updatedAt: new Date().toISOString() })
+        break
+      case 'goal.status': {
+        const goal = snapshot.goals.find((entry) => entry.id === mutation.goalId)
+        if (goal) goal.status = mutation.status
+        break
+      }
+      case 'goal.delete':
+        snapshot.goals = snapshot.goals.filter((entry) => entry.id !== mutation.goalId)
+        snapshot.milestones = snapshot.milestones.filter((entry) => entry.goalId !== mutation.goalId)
+        break
+      case 'milestone.create':
+        snapshot.milestones.push({ id: mutation.input.entityId!, userId, goalId: mutation.input.goalId, title: mutation.input.title, targetDate: mutation.input.targetDate, status: 'planned', sortOrder: mutation.input.sortOrder, updatedAt: new Date().toISOString() })
+        break
+      case 'milestone.status': {
+        const milestone = snapshot.milestones.find((entry) => entry.id === mutation.milestoneId)
+        if (milestone) milestone.status = mutation.status
+        break
+      }
+      case 'milestone.delete':
+        snapshot.milestones = snapshot.milestones.filter((entry) => entry.id !== mutation.milestoneId)
         break
       case 'task.status': {
         const task = snapshot.tasks.find((entry) => entry.id === mutation.taskId)
@@ -131,6 +166,12 @@ export function createOfflineUserDataGateway(
     switch (mutation.type) {
       case 'profile.save': return remote.saveProfile(userId, mutation.input)
       case 'task.create': return remote.createTask(userId, mutation.input)
+      case 'goal.create': return remote.createGoal(userId, mutation.input)
+      case 'goal.status': return remote.setGoalStatus(userId, mutation.goalId, mutation.status)
+      case 'goal.delete': return remote.softDeleteGoal(userId, mutation.goalId)
+      case 'milestone.create': return remote.createMilestone(userId, mutation.input)
+      case 'milestone.status': return remote.setMilestoneStatus(userId, mutation.milestoneId, mutation.status)
+      case 'milestone.delete': return remote.softDeleteMilestone(userId, mutation.milestoneId)
       case 'task.status': return remote.setTaskStatus(userId, mutation.taskId, mutation.status, mutation.expectedUpdatedAt)
       case 'task.delete': return remote.softDeleteTask(userId, mutation.taskId)
       case 'task.restore': return remote.restoreTask(userId, mutation.taskId)
@@ -206,6 +247,18 @@ export function createOfflineUserDataGateway(
       const id = createId()
       return mutate(userId, { id, type: 'task.create', input: { ...input, entityId: input.entityId ?? createId(), idempotencyKey: input.idempotencyKey ?? id } })
     },
+    createGoal(userId, input) {
+      const id = createId()
+      return mutate(userId, { id, type: 'goal.create', input: { ...input, entityId: input.entityId ?? createId(), idempotencyKey: input.idempotencyKey ?? id } })
+    },
+    setGoalStatus: (userId, goalId, status) => mutate(userId, { id: createId(), type: 'goal.status', goalId, status }),
+    softDeleteGoal: (userId, goalId) => mutate(userId, { id: createId(), type: 'goal.delete', goalId }),
+    createMilestone(userId, input) {
+      const id = createId()
+      return mutate(userId, { id, type: 'milestone.create', input: { ...input, entityId: input.entityId ?? createId(), idempotencyKey: input.idempotencyKey ?? id } })
+    },
+    setMilestoneStatus: (userId, milestoneId, status) => mutate(userId, { id: createId(), type: 'milestone.status', milestoneId, status }),
+    softDeleteMilestone: (userId, milestoneId) => mutate(userId, { id: createId(), type: 'milestone.delete', milestoneId }),
     setTaskStatus: (userId, taskId, status, expectedUpdatedAt) => mutate(userId, { id: createId(), type: 'task.status', taskId, status, expectedUpdatedAt }),
     softDeleteTask: (userId, taskId) => mutate(userId, { id: createId(), type: 'task.delete', taskId }),
     restoreTask: (userId, taskId) => mutate(userId, { id: createId(), type: 'task.restore', taskId }),

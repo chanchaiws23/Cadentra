@@ -1,11 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Habit, ItemStatus, Priority, Task, UserProfile } from '@cadentra/domain'
+import type { Goal, Habit, ItemStatus, Milestone, Priority, Task, UserProfile } from '@cadentra/domain'
 import { dataError, type DataResult } from './repository'
 
 export interface UserDataSnapshot {
   profile: UserProfile | null
   tasks: Task[]
   habits: Habit[]
+  goals: Goal[]
+  milestones: Milestone[]
   points: number
   focusMinutes: number
 }
@@ -18,6 +20,24 @@ export interface CreateTaskInput {
   end: string
   category?: string
   priority?: Priority
+  goalId?: string
+}
+
+export interface CreateGoalInput {
+  entityId?: string
+  idempotencyKey?: string
+  title: string
+  description: string
+  targetDate?: string
+}
+
+export interface CreateMilestoneInput {
+  entityId?: string
+  idempotencyKey?: string
+  goalId: string
+  title: string
+  targetDate?: string
+  sortOrder: number
 }
 
 export interface CreateHabitInput {
@@ -43,6 +63,12 @@ export interface UserDataGateway {
   exportAccount(userId: string): Promise<DataResult<AccountExport>>
   deleteAccount(): Promise<DataResult<void>>
   createTask(userId: string, input: CreateTaskInput): Promise<DataResult<void>>
+  createGoal(userId: string, input: CreateGoalInput): Promise<DataResult<void>>
+  setGoalStatus(userId: string, goalId: string, status: ItemStatus): Promise<DataResult<void>>
+  softDeleteGoal(userId: string, goalId: string): Promise<DataResult<void>>
+  createMilestone(userId: string, input: CreateMilestoneInput): Promise<DataResult<void>>
+  setMilestoneStatus(userId: string, milestoneId: string, status: ItemStatus): Promise<DataResult<void>>
+  softDeleteMilestone(userId: string, milestoneId: string): Promise<DataResult<void>>
   setTaskStatus(userId: string, taskId: string, status: ItemStatus, expectedUpdatedAt?: string): Promise<DataResult<void>>
   softDeleteTask(userId: string, taskId: string): Promise<DataResult<void>>
   restoreTask(userId: string, taskId: string): Promise<DataResult<void>>
@@ -74,6 +100,27 @@ interface TaskRow {
   status: ItemStatus
   goal_id: string | null
   recurrence_rule: string | null
+  updated_at: string
+}
+
+interface GoalRow {
+  id: string
+  user_id: string
+  title: string
+  description: string | null
+  target_date: string | null
+  status: ItemStatus
+  updated_at: string
+}
+
+interface MilestoneRow {
+  id: string
+  user_id: string
+  goal_id: string
+  title: string
+  target_date: string | null
+  status: ItemStatus
+  sort_order: number
   updated_at: string
 }
 
@@ -126,6 +173,14 @@ export function mapTaskRow(row: TaskRow): Task | null {
     recurring: Boolean(row.recurrence_rule),
     updatedAt: row.updated_at,
   }
+}
+
+export function mapGoalRow(row: GoalRow): Goal {
+  return { id: row.id, userId: row.user_id, title: row.title, description: row.description ?? '', targetDate: row.target_date ?? undefined, status: row.status, updatedAt: row.updated_at }
+}
+
+export function mapMilestoneRow(row: MilestoneRow): Milestone {
+  return { id: row.id, userId: row.user_id, goalId: row.goal_id, title: row.title, targetDate: row.target_date ?? undefined, status: row.status, sortOrder: row.sort_order, updatedAt: row.updated_at }
 }
 
 function dateBefore(localDate: string, days: number): string {
@@ -183,21 +238,25 @@ function idempotentWrite(error: { message: string; code?: string } | null): Data
 export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataGateway {
   return {
     async load(userId, focusSince, localDate) {
-      const [profile, tasks, habits, checkIns, points, focusSessions] = await Promise.all([
+      const [profile, tasks, goals, milestones, habits, checkIns, points, focusSessions] = await Promise.all([
         client.from('profiles').select('id,display_name,timezone,locale,gamification_enabled,health_ai_consent').eq('id', userId).maybeSingle(),
         client.from('tasks').select('id,user_id,title,starts_at,ends_at,category,priority,status,goal_id,recurrence_rule,updated_at').eq('user_id', userId).is('deleted_at', null).order('starts_at'),
+        client.from('goals').select('id,user_id,title,description,target_date,status,updated_at').eq('user_id', userId).is('deleted_at', null).order('created_at'),
+        client.from('milestones').select('id,user_id,goal_id,title,target_date,status,sort_order,updated_at').eq('user_id', userId).is('deleted_at', null).order('sort_order'),
         client.from('habits').select('id,user_id,title,cue,target,unit').eq('user_id', userId).is('deleted_at', null).order('created_at'),
         client.from('habit_checkins').select('habit_id,local_date').eq('user_id', userId).order('local_date'),
         client.from('point_transactions').select('amount').eq('user_id', userId),
         client.from('focus_sessions').select('elapsed_seconds').eq('user_id', userId).gte('created_at', focusSince),
       ])
-      const error = profile.error ?? tasks.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error
+      const error = profile.error ?? tasks.error ?? goals.error ?? milestones.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error
       if (error) return failure(error)
       return {
         ok: true,
         value: {
           profile: mapProfileRow(profile.data as ProfileRow | null),
           tasks: (tasks.data as TaskRow[]).map(mapTaskRow).filter((task): task is Task => Boolean(task)),
+          goals: (goals.data as GoalRow[]).map(mapGoalRow),
+          milestones: (milestones.data as MilestoneRow[]).map(mapMilestoneRow),
           habits: buildHabits(habits.data as HabitRow[], checkIns.data as HabitCheckInRow[], localDate),
           points: (points.data as { amount: number }[]).reduce((total, entry) => total + entry.amount, 0),
           focusMinutes: Math.floor((focusSessions.data as { elapsed_seconds: number }[]).reduce((total, entry) => total + entry.elapsed_seconds, 0) / 60),
@@ -222,6 +281,7 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
       const queries = {
         profiles: client.from('profiles').select('*').eq('id', userId),
         goals: client.from('goals').select('*').eq('user_id', userId),
+        milestones: client.from('milestones').select('*').eq('user_id', userId),
         tasks: client.from('tasks').select('*').eq('user_id', userId),
         habits: client.from('habits').select('*').eq('user_id', userId),
         habit_checkins: client.from('habit_checkins').select('*').eq('user_id', userId),
@@ -267,9 +327,44 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         category: input.category ?? 'ทั่วไป',
         priority: input.priority ?? 'medium',
+        goal_id: input.goalId ?? null,
         idempotency_key: input.idempotencyKey ?? crypto.randomUUID(),
       })
       return idempotentWrite(error)
+    },
+
+    async createGoal(userId, input) {
+      const { error } = await client.from('goals').insert({ id: input.entityId, user_id: userId, title: input.title, description: input.description || null, target_date: input.targetDate ?? null, idempotency_key: input.idempotencyKey })
+      return idempotentWrite(error)
+    },
+
+    async setGoalStatus(userId, goalId, status) {
+      const { error } = await client.from('goals').update({ status, updated_at: new Date().toISOString() }).eq('id', goalId).eq('user_id', userId)
+      return error ? failure(error) : ok()
+    },
+
+    async softDeleteGoal(userId, goalId) {
+      const now = new Date().toISOString()
+      const [goal, milestones] = await Promise.all([
+        client.from('goals').update({ deleted_at: now, updated_at: now }).eq('id', goalId).eq('user_id', userId),
+        client.from('milestones').update({ deleted_at: now, updated_at: now }).eq('goal_id', goalId).eq('user_id', userId),
+      ])
+      return goal.error || milestones.error ? failure(goal.error ?? milestones.error) : ok()
+    },
+
+    async createMilestone(userId, input) {
+      const { error } = await client.from('milestones').insert({ id: input.entityId, user_id: userId, goal_id: input.goalId, title: input.title, target_date: input.targetDate ?? null, sort_order: input.sortOrder, idempotency_key: input.idempotencyKey })
+      return idempotentWrite(error)
+    },
+
+    async setMilestoneStatus(userId, milestoneId, status) {
+      const { error } = await client.from('milestones').update({ status, updated_at: new Date().toISOString() }).eq('id', milestoneId).eq('user_id', userId)
+      return error ? failure(error) : ok()
+    },
+
+    async softDeleteMilestone(userId, milestoneId) {
+      const { error } = await client.from('milestones').update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', milestoneId).eq('user_id', userId)
+      return error ? failure(error) : ok()
     },
 
     async setTaskStatus(userId, taskId, status, expectedUpdatedAt) {

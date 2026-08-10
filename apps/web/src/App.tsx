@@ -7,13 +7,14 @@ import {
   LogOut, Plus, Search, Settings, Sparkles,
   Target, Trophy, X,
 } from 'lucide-react'
-import { completionRate, pointsForCompletion, type Habit, type Task } from '@cadentra/domain'
+import { completionRate, pointsForCompletion, type Goal, type Habit, type Milestone, type Task } from '@cadentra/domain'
 import type { SyncIssue, UpdateProfileInput, UserDataGateway } from '@cadentra/data'
 import { PageHeading } from './components/PageHeading'
 import { AppToaster } from './components/AppToaster'
 import { useAuth } from './auth/AuthContext'
 import { CalendarView } from './features/calendar/CalendarView'
 import { FocusView } from './features/focus/FocusView'
+import { GoalsView } from './features/goals/GoalsView'
 import { HabitsView } from './features/habits/HabitsView'
 import { TasksView } from './features/tasks/TasksView'
 import { TodayView } from './features/today/TodayView'
@@ -41,7 +42,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const navigate = useNavigate()
   const view = pathToView(location.pathname)
   const { snapshot, loading, error, reload, online, pendingCount, syncIssues } = useUserData(dataGateway, session?.user.id)
-  const { profile, tasks, habits, points, focusMinutes } = snapshot
+  const { profile, tasks, goals, milestones, habits, points, focusMinutes } = snapshot
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [habitAddOpen, setHabitAddOpen] = useState(false)
@@ -82,15 +83,57 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     else toast.info('ไม่เป็นไร เริ่มใหม่ได้เสมอ')
   }
 
-  const addTask = async (title: string, time: string, duration: number) => {
+  const addTask = async (title: string, time: string, duration: number, goalId?: string) => {
     if (!dataGateway || !session) return
     const [hour, minute] = time.split(':').map(Number)
     const start = new Date(); start.setHours(hour, minute, 0, 0)
     const end = new Date(start.getTime() + duration * 60000)
-    const result = await dataGateway.createTask(session.user.id, { title, start: start.toISOString(), end: end.toISOString() })
+    const result = await dataGateway.createTask(session.user.id, { title, start: start.toISOString(), end: end.toISOString(), goalId })
     if (!result.ok) return toast.error('เพิ่มงานไม่สำเร็จ', { description: result.error.message })
     await reload()
     setAddOpen(false); notify('เพิ่มลงในวันนี้แล้ว')
+  }
+
+  const createGoal = async (title: string, description: string, targetDate?: string) => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.createGoal(session.user.id, { title, description, targetDate })
+    if (!result.ok) return void toast.error('สร้างเป้าหมายไม่สำเร็จ', { description: result.error.message })
+    await reload(); notify('สร้างเป้าหมายแล้ว')
+  }
+
+  const toggleGoal = async (goal: Goal) => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.setGoalStatus(session.user.id, goal.id, goal.status === 'done' ? 'planned' : 'done')
+    if (!result.ok) return void toast.error('อัปเดตเป้าหมายไม่สำเร็จ', { description: result.error.message })
+    await reload()
+  }
+
+  const deleteGoal = async (goal: Goal) => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.softDeleteGoal(session.user.id, goal.id)
+    if (!result.ok) return void toast.error('ลบเป้าหมายไม่สำเร็จ', { description: result.error.message })
+    await reload(); notify('ลบเป้าหมายแล้ว')
+  }
+
+  const createMilestone = async (goalId: string, title: string, targetDate: string | undefined, sortOrder: number) => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.createMilestone(session.user.id, { goalId, title, targetDate, sortOrder })
+    if (!result.ok) return void toast.error('เพิ่ม Milestone ไม่สำเร็จ', { description: result.error.message })
+    await reload(); notify('เพิ่ม Milestone แล้ว')
+  }
+
+  const toggleMilestone = async (milestone: Milestone) => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.setMilestoneStatus(session.user.id, milestone.id, milestone.status === 'done' ? 'planned' : 'done')
+    if (!result.ok) return void toast.error('อัปเดต Milestone ไม่สำเร็จ', { description: result.error.message })
+    await reload()
+  }
+
+  const deleteMilestone = async (milestone: Milestone) => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.softDeleteMilestone(session.user.id, milestone.id)
+    if (!result.ok) return void toast.error('ลบ Milestone ไม่สำเร็จ', { description: result.error.message })
+    await reload()
   }
 
   const addHabit = async (title: string, cue: string, target: number, unit: string) => {
@@ -221,7 +264,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
             <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={displayName} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => toast.info('AI Coach จะเปิดใช้เมื่อ Edge Function พร้อม')} />}/>
             <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} onTask={toggleTask}/>}/>
             <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
-            <Route path={viewPaths.goals} element={<PlaceholderView eyebrow="เป้าหมายระยะยาว" title="เป้าหมาย" detail="เชื่อมสิ่งที่อยากเปลี่ยนให้เป็น Milestone งาน และเวลาในปฏิทิน"/>}/>
+            <Route path={viewPaths.goals} element={<GoalsView goals={goals} milestones={milestones} tasks={tasks} onCreateGoal={createGoal} onToggleGoal={toggleGoal} onDeleteGoal={deleteGoal} onCreateMilestone={createMilestone} onToggleMilestone={toggleMilestone} onDeleteMilestone={deleteMilestone}/>}/>
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabit={toggleHabit} onAdd={() => setHabitAddOpen(true)}/>}/>
             <Route path={viewPaths.focus} element={<FocusView tasks={tasks} notify={notify} onComplete={recordFocus}/>}/>
             <Route path={viewPaths.insights} element={<InsightsView tasks={tasks} habits={habits} points={points} focusMinutes={focusMinutes}/>}/>
@@ -232,7 +275,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
       </main>
 
       {menuOpen && <button className="scrim" onClick={() => setMenuOpen(false)} aria-label="ปิดเมนู"/>}
-      {addOpen && <AddTaskModal onClose={() => setAddOpen(false)} onAdd={addTask}/>} 
+      {addOpen && <AddTaskModal goals={goals} onClose={() => setAddOpen(false)} onAdd={addTask}/>}
       {habitAddOpen && <AddHabitModal onClose={() => setHabitAddOpen(false)} onAdd={addHabit}/>}
       <AppToaster/>
     </div>
@@ -241,10 +284,6 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
 
 function SyncConflictBanner({ issue, onResolve }: { issue: SyncIssue; onResolve: (issue: SyncIssue, resolution: 'local' | 'cloud') => Promise<void> }) {
   return <div className="mb-6 flex items-start gap-3 rounded-xl border border-[#dcc48f] bg-[#f4ecd9] p-4 text-sm" role="alert"><AlertTriangle className="mt-0.5 shrink-0 text-[#8a6126]" size={18}/><div className="min-w-0 flex-1"><strong className="block">{issue.title}</strong><p className="mt-1 text-xs leading-5 text-muted">{issue.detail} เลือกว่าจะเก็บการเปลี่ยนแปลงจากเครื่องนี้ หรือกลับไปใช้ข้อมูลล่าสุดจาก Supabase</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="primary compact" onClick={() => void onResolve(issue, 'local')}>ใช้ข้อมูลในเครื่อง</button><button type="button" className="secondary" onClick={() => void onResolve(issue, 'cloud')}>ใช้ข้อมูลบนคลาวด์</button></div></div></div>
-}
-
-function PlaceholderView({ eyebrow, title, detail }: { eyebrow: string; title: string; detail: string }) {
-  return <PageHeading eyebrow={eyebrow} title={title} detail={detail}/>
 }
 
 function DataLoading() {
@@ -266,9 +305,9 @@ function InsightsView({ tasks, habits, points, focusMinutes }: { tasks: Task[]; 
     <section className="streak-section"><div className="section-title"><div><h2>นิสัยที่กำลังเติบโต</h2><p>ความสม่ำเสมอสำคัญกว่าความสมบูรณ์แบบ</p></div></div>{habits.map(h => <div className="streak-row" key={h.id}><strong>{h.title}</strong><div>{Array.from({length: 14}, (_, i) => <i className={i < Math.min(h.streak, 14) ? 'filled' : ''} key={i}/>)}</div><span>{h.streak} วัน</span></div>)}</section></>
 }
 
-function AddTaskModal({ onClose, onAdd }: { onClose: () => void; onAdd: (title: string, time: string, duration: number) => void }) {
-  const [title, setTitle] = useState(''); const [time, setTime] = useState('15:30'); const [duration, setDuration] = useState(45)
-  return <div className="modal-backdrop" onMouseDown={onClose}><form className="modal" onMouseDown={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); if (title.trim()) onAdd(title.trim(), time, duration) }}><div className="modal-head"><div><p className="eyebrow">เพิ่มอย่างรวดเร็ว</p><h2>วางลงในวันนี้</h2></div><button type="button" className="icon-button" onClick={onClose}><X/></button></div><label>สิ่งที่ต้องทำ<input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="เช่น อ่านหนังสือ 20 นาที"/></label><div className="form-grid"><label>เริ่มเวลา<input type="time" value={time} onChange={e => setTime(e.target.value)}/></label><label>ระยะเวลา<select value={duration} onChange={e => setDuration(Number(e.target.value))}><option value={15}>15 นาที</option><option value={30}>30 นาที</option><option value={45}>45 นาที</option><option value={60}>1 ชั่วโมง</option><option value={90}>1.5 ชั่วโมง</option></select></label></div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>ยกเลิก</button><button className="primary" disabled={!title.trim()}>เพิ่มลงตาราง</button></div></form></div>
+function AddTaskModal({ goals, onClose, onAdd }: { goals: Goal[]; onClose: () => void; onAdd: (title: string, time: string, duration: number, goalId?: string) => void }) {
+  const [title, setTitle] = useState(''); const [time, setTime] = useState('15:30'); const [duration, setDuration] = useState(45); const [goalId, setGoalId] = useState('')
+  return <div className="modal-backdrop" onMouseDown={onClose}><form className="modal" onMouseDown={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); if (title.trim()) onAdd(title.trim(), time, duration, goalId || undefined) }}><div className="modal-head"><div><p className="eyebrow">เพิ่มอย่างรวดเร็ว</p><h2>วางลงในวันนี้</h2></div><button type="button" className="icon-button" onClick={onClose}><X/></button></div><label>สิ่งที่ต้องทำ<input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="เช่น อ่านหนังสือ 20 นาที"/></label><div className="form-grid"><label>เริ่มเวลา<input type="time" value={time} onChange={e => setTime(e.target.value)}/></label><label>ระยะเวลา<select value={duration} onChange={e => setDuration(Number(e.target.value))}><option value={15}>15 นาที</option><option value={30}>30 นาที</option><option value={45}>45 นาที</option><option value={60}>1 ชั่วโมง</option><option value={90}>1.5 ชั่วโมง</option></select></label></div>{goals.length > 0 && <label>เชื่อมกับเป้าหมาย<select value={goalId} onChange={e => setGoalId(e.target.value)}><option value="">ไม่เชื่อมเป้าหมาย</option>{goals.filter(goal => goal.status !== 'done').map(goal => <option value={goal.id} key={goal.id}>{goal.title}</option>)}</select></label>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>ยกเลิก</button><button className="primary" disabled={!title.trim()}>เพิ่มลงตาราง</button></div></form></div>
 }
 
 function AddHabitModal({ onClose, onAdd }: { onClose: () => void; onAdd: (title: string, cue: string, target: number, unit: string) => void }) {

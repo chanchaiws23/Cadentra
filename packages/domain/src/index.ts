@@ -26,6 +26,27 @@ export interface Task {
   updatedAt?: string
 }
 
+export interface Goal {
+  id: string
+  userId: string
+  title: string
+  description: string
+  targetDate?: string
+  status: ItemStatus
+  updatedAt: string
+}
+
+export interface Milestone {
+  id: string
+  userId: string
+  goalId: string
+  title: string
+  targetDate?: string
+  status: ItemStatus
+  sortOrder: number
+  updatedAt: string
+}
+
 export interface Habit {
   id: string
   userId: string

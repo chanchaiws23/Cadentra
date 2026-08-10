@@ -17,6 +17,8 @@ const snapshot: UserDataSnapshot = {
     category: 'work', priority: 'medium', status: 'planned',
     updatedAt: '2026-08-10T00:00:00.000Z',
   }],
+  goals: [],
+  milestones: [],
   habits: [{ id: 'habit-1', userId: 'user-1', title: 'Read', cue: '', target: 20, unit: 'minutes', streak: 0, completedDates: [] }],
   points: 0,
   focusMinutes: 0,
@@ -29,6 +31,12 @@ function remoteGateway(): UserDataGateway {
     exportAccount: vi.fn(async (userId) => ({ ok: true as const, value: { exportedAt: '', userId, data: {} } })),
     deleteAccount: vi.fn(async () => ({ ok: true as const, value: undefined })),
     createTask: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    createGoal: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    setGoalStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    softDeleteGoal: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    createMilestone: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    setMilestoneStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    softDeleteMilestone: vi.fn(async () => ({ ok: true as const, value: undefined })),
     setTaskStatus: vi.fn(async () => ({ ok: true as const, value: undefined })),
     softDeleteTask: vi.fn(async () => ({ ok: true as const, value: undefined })),
     restoreTask: vi.fn(async () => ({ ok: true as const, value: undefined })),
@@ -128,5 +136,26 @@ describe('offline user data gateway', () => {
     await gateway.resolveSyncIssue?.('user-1', issue!.id, 'cloud')
     expect(gateway.pendingCount?.('user-1')).toBe(0)
     expect(remote.recordPoints).not.toHaveBeenCalled()
+  })
+
+  it('creates goals and milestones optimistically while offline', async () => {
+    let online = true
+    let id = 0
+    const remote = remoteGateway()
+    const gateway = createOfflineUserDataGateway(remote, new MemoryStorage(), { isOnline: () => online, createId: () => `goal-id-${++id}` })
+    await gateway.load('user-1', '', '2026-08-10')
+    online = false
+    await gateway.createGoal('user-1', { title: 'Run a marathon', description: 'Finish 42 km' })
+    await gateway.createMilestone('user-1', { goalId: 'goal-id-2', title: 'Run 10 km', sortOrder: 0 })
+
+    const cached = await gateway.load('user-1', '', '2026-08-10')
+    expect(cached.ok && cached.value.goals[0]).toMatchObject({ id: 'goal-id-2', title: 'Run a marathon' })
+    expect(cached.ok && cached.value.milestones[0]).toMatchObject({ goalId: 'goal-id-2', title: 'Run 10 km' })
+    expect(gateway.pendingCount?.('user-1')).toBe(2)
+
+    online = true
+    await gateway.syncPending?.('user-1')
+    expect(remote.createGoal).toHaveBeenCalledWith('user-1', expect.objectContaining({ entityId: 'goal-id-2', idempotencyKey: 'goal-id-1' }))
+    expect(remote.createMilestone).toHaveBeenCalledWith('user-1', expect.objectContaining({ goalId: 'goal-id-2', entityId: 'goal-id-4' }))
   })
 })
