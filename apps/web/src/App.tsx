@@ -58,13 +58,15 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const toggleTask = async (task: Task) => {
     if (!dataGateway || !session) return
     const completing = task.status !== 'done'
-    const result = await dataGateway.setTaskStatus(session.user.id, task.id, completing ? 'done' : 'planned', task.updatedAt)
+    const result = task.sourceTaskId && task.occurrenceDate
+      ? await dataGateway.setTaskOccurrenceStatus(session.user.id, task.sourceTaskId, task.occurrenceDate, completing ? 'done' : 'planned')
+      : await dataGateway.setTaskStatus(session.user.id, task.id, completing ? 'done' : 'planned', task.updatedAt)
     if (!result.ok) {
       if (result.error.code === 'conflict') await reload()
       return toast.error(result.error.code === 'conflict' ? 'พบข้อมูลชนกัน กรุณาเลือกเวอร์ชัน' : 'บันทึกสถานะงานไม่สำเร็จ', { description: result.error.message })
     }
     const amount = completing ? pointsForCompletion(task.priority) : -pointsForCompletion(task.priority)
-    const pointsResult = await dataGateway.recordPoints(session.user.id, 'task', task.id, amount, completing ? 'task_completed' : 'task_reopened')
+    const pointsResult = await dataGateway.recordPoints(session.user.id, 'task', task.sourceTaskId ?? task.id, amount, completing ? 'task_completed' : 'task_reopened')
     if (!pointsResult.ok) toast.warning('สถานะงานถูกบันทึก แต่คะแนนยังไม่อัปเดต')
     await reload()
     if (completing) notify(`ทำสำเร็จ · +${pointsForCompletion(task.priority)} คะแนน`)
@@ -83,12 +85,12 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     else toast.info('ไม่เป็นไร เริ่มใหม่ได้เสมอ')
   }
 
-  const addTask = async (title: string, time: string, duration: number, goalId?: string) => {
+  const addTask = async (title: string, time: string, duration: number, goalId?: string, recurrenceRule?: string) => {
     if (!dataGateway || !session) return
     const [hour, minute] = time.split(':').map(Number)
     const start = new Date(); start.setHours(hour, minute, 0, 0)
     const end = new Date(start.getTime() + duration * 60000)
-    const result = await dataGateway.createTask(session.user.id, { title, start: start.toISOString(), end: end.toISOString(), goalId })
+    const result = await dataGateway.createTask(session.user.id, { title, start: start.toISOString(), end: end.toISOString(), goalId, recurrenceRule })
     if (!result.ok) return toast.error('เพิ่มงานไม่สำเร็จ', { description: result.error.message })
     await reload()
     setAddOpen(false); notify('เพิ่มลงในวันนี้แล้ว')
@@ -146,14 +148,15 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
 
   const deleteTask = useCallback(async (task: Task) => {
     if (!dataGateway || !session) return
-    const result = await dataGateway.softDeleteTask(session.user.id, task.id)
+    const taskId = task.sourceTaskId ?? task.id
+    const result = await dataGateway.softDeleteTask(session.user.id, taskId)
     if (!result.ok) return toast.error('ลบงานไม่สำเร็จ', { description: result.error.message })
     await reload()
     toast.success('ลบงานแล้ว', {
       description: task.title,
       action: {
         label: 'เลิกทำ',
-        onClick: () => void dataGateway.restoreTask(session.user.id, task.id).then(async (restoreResult) => {
+        onClick: () => void dataGateway.restoreTask(session.user.id, taskId).then(async (restoreResult) => {
           if (!restoreResult.ok) return toast.error('กู้คืนงานไม่สำเร็จ', { description: restoreResult.error.message })
           await reload()
         }),
@@ -163,7 +166,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
 
   const recordFocus = async (task: Task | undefined, plannedMinutes: number, elapsedSeconds: number) => {
     if (!dataGateway || !session) return
-    const result = await dataGateway.recordFocusSession(session.user.id, task?.id, plannedMinutes, elapsedSeconds)
+    const result = await dataGateway.recordFocusSession(session.user.id, task?.sourceTaskId ?? task?.id, plannedMinutes, elapsedSeconds)
     if (!result.ok) return toast.error('บันทึกเวลาโฟกัสไม่สำเร็จ', { description: result.error.message })
     await reload()
   }
@@ -305,9 +308,9 @@ function InsightsView({ tasks, habits, points, focusMinutes }: { tasks: Task[]; 
     <section className="streak-section"><div className="section-title"><div><h2>นิสัยที่กำลังเติบโต</h2><p>ความสม่ำเสมอสำคัญกว่าความสมบูรณ์แบบ</p></div></div>{habits.map(h => <div className="streak-row" key={h.id}><strong>{h.title}</strong><div>{Array.from({length: 14}, (_, i) => <i className={i < Math.min(h.streak, 14) ? 'filled' : ''} key={i}/>)}</div><span>{h.streak} วัน</span></div>)}</section></>
 }
 
-function AddTaskModal({ goals, onClose, onAdd }: { goals: Goal[]; onClose: () => void; onAdd: (title: string, time: string, duration: number, goalId?: string) => void }) {
-  const [title, setTitle] = useState(''); const [time, setTime] = useState('15:30'); const [duration, setDuration] = useState(45); const [goalId, setGoalId] = useState('')
-  return <div className="modal-backdrop" onMouseDown={onClose}><form className="modal" onMouseDown={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); if (title.trim()) onAdd(title.trim(), time, duration, goalId || undefined) }}><div className="modal-head"><div><p className="eyebrow">เพิ่มอย่างรวดเร็ว</p><h2>วางลงในวันนี้</h2></div><button type="button" className="icon-button" onClick={onClose}><X/></button></div><label>สิ่งที่ต้องทำ<input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="เช่น อ่านหนังสือ 20 นาที"/></label><div className="form-grid"><label>เริ่มเวลา<input type="time" value={time} onChange={e => setTime(e.target.value)}/></label><label>ระยะเวลา<select value={duration} onChange={e => setDuration(Number(e.target.value))}><option value={15}>15 นาที</option><option value={30}>30 นาที</option><option value={45}>45 นาที</option><option value={60}>1 ชั่วโมง</option><option value={90}>1.5 ชั่วโมง</option></select></label></div>{goals.length > 0 && <label>เชื่อมกับเป้าหมาย<select value={goalId} onChange={e => setGoalId(e.target.value)}><option value="">ไม่เชื่อมเป้าหมาย</option>{goals.filter(goal => goal.status !== 'done').map(goal => <option value={goal.id} key={goal.id}>{goal.title}</option>)}</select></label>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>ยกเลิก</button><button className="primary" disabled={!title.trim()}>เพิ่มลงตาราง</button></div></form></div>
+function AddTaskModal({ goals, onClose, onAdd }: { goals: Goal[]; onClose: () => void; onAdd: (title: string, time: string, duration: number, goalId?: string, recurrenceRule?: string) => void }) {
+  const [title, setTitle] = useState(''); const [time, setTime] = useState('15:30'); const [duration, setDuration] = useState(45); const [goalId, setGoalId] = useState(''); const [recurrenceRule, setRecurrenceRule] = useState('')
+  return <div className="modal-backdrop" onMouseDown={onClose}><form className="modal" onMouseDown={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); if (title.trim()) onAdd(title.trim(), time, duration, goalId || undefined, recurrenceRule || undefined) }}><div className="modal-head"><div><p className="eyebrow">เพิ่มอย่างรวดเร็ว</p><h2>วางลงในวันนี้</h2></div><button type="button" className="icon-button" onClick={onClose}><X/></button></div><label>สิ่งที่ต้องทำ<input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="เช่น อ่านหนังสือ 20 นาที"/></label><div className="form-grid"><label>เริ่มเวลา<input type="time" value={time} onChange={e => setTime(e.target.value)}/></label><label>ระยะเวลา<select value={duration} onChange={e => setDuration(Number(e.target.value))}><option value={15}>15 นาที</option><option value={30}>30 นาที</option><option value={45}>45 นาที</option><option value={60}>1 ชั่วโมง</option><option value={90}>1.5 ชั่วโมง</option></select></label></div><div className="form-grid">{goals.length > 0 && <label>เชื่อมกับเป้าหมาย<select value={goalId} onChange={e => setGoalId(e.target.value)}><option value="">ไม่เชื่อมเป้าหมาย</option>{goals.filter(goal => goal.status !== 'done').map(goal => <option value={goal.id} key={goal.id}>{goal.title}</option>)}</select></label>}<label>ทำซ้ำ<select aria-label="ทำซ้ำ" value={recurrenceRule} onChange={e => setRecurrenceRule(e.target.value)}><option value="">ไม่ทำซ้ำ</option><option value="FREQ=DAILY">ทุกวัน</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">วันจันทร์–ศุกร์</option><option value="FREQ=WEEKLY">ทุกสัปดาห์</option></select></label></div>{recurrenceRule && <p className="mt-3 text-xs text-accent">ระบบจะสร้างรอบงานเมื่อแสดงปฏิทิน โดยไม่บันทึกงานอนาคตซ้ำทั้งหมด</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>ยกเลิก</button><button className="primary" disabled={!title.trim()}>เพิ่มลงตาราง</button></div></form></div>
 }
 
 function AddHabitModal({ onClose, onAdd }: { onClose: () => void; onAdd: (title: string, cue: string, target: number, unit: string) => void }) {

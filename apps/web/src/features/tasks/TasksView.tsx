@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Circle, Plus, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, Circle, Plus, Repeat2, Trash2 } from 'lucide-react'
 import type { ItemStatus, Task } from '@cadentra/domain'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { PageHeading } from '../../components/PageHeading'
@@ -46,7 +46,7 @@ export function TasksView({ tasks, onTask, onDelete, onAdd }: TasksViewProps) {
                   <button className="check-button" aria-label={`เปลี่ยนสถานะ ${task.title}`} onClick={() => onTask(task)}>
                     {task.status === 'done' ? <Check size={15}/> : <Circle size={15}/>}
                   </button>
-                  <div><strong>{task.title}</strong><small>{task.category} · {formatTime(task.start)}</small></div>
+                  <div><strong className="flex items-center gap-1.5">{task.title}{task.recurrenceRule && <Repeat2 size={12} aria-label="งานซ้ำ"/>}</strong><small>{task.category} · {formatTime(task.start)}</small></div>
                   <span className={`priority ${task.priority}`}>{task.priority}</span>
                   <ConfirmDialog
                     trigger={<button type="button" className="grid size-8 place-items-center rounded-lg text-muted transition-colors hover:bg-[#f1e5e1] hover:text-[#9b493f]" aria-label={`ลบงาน ${task.title}`}><Trash2 size={15}/></button>}
