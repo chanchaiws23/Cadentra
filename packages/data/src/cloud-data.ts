@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Goal, Habit, ItemStatus, Milestone, Priority, Task, TaskOccurrence, UserProfile } from '@cadentra/domain'
+import type { Goal, Habit, HabitType, ItemStatus, Milestone, Priority, Task, TaskOccurrence, UserProfile } from '@cadentra/domain'
 import { dataError, type DataResult } from './repository'
 
 export interface UserDataSnapshot {
@@ -49,6 +49,7 @@ export interface CreateHabitInput {
   cue: string
   target: number
   unit: string
+  type: HabitType
 }
 
 export type UpdateProfileInput = Omit<UserProfile, 'id'>
@@ -79,7 +80,7 @@ export interface UserDataGateway {
   softDeleteTask(userId: string, taskId: string): Promise<DataResult<void>>
   restoreTask(userId: string, taskId: string): Promise<DataResult<void>>
   createHabit(userId: string, input: CreateHabitInput): Promise<DataResult<void>>
-  setHabitCheckIn(userId: string, habitId: string, localDate: string, completed: boolean): Promise<DataResult<void>>
+  setHabitCheckIn(userId: string, habitId: string, localDate: string, value: number | null): Promise<DataResult<void>>
   recordPoints(userId: string, sourceType: string, sourceId: string, amount: number, reason: string, idempotencyKey?: string): Promise<DataResult<void>>
   recordFocusSession(userId: string, taskId: string | undefined, plannedMinutes: number, elapsedSeconds: number, idempotencyKey?: string): Promise<DataResult<void>>
   syncPending?(userId: string): Promise<DataResult<{ synced: number; pending: number }>>
@@ -137,11 +138,13 @@ interface HabitRow {
   cue: string | null
   target: number | string
   unit: string
+  habit_type: HabitType
 }
 
 interface HabitCheckInRow {
   habit_id: string
   local_date: string
+  value: number | string
 }
 
 interface ProfileRow {
@@ -208,23 +211,27 @@ export function calculateCurrentStreak(completedDates: readonly string[], localD
 }
 
 export function buildHabits(rows: readonly HabitRow[], checkIns: readonly HabitCheckInRow[], localDate: string): Habit[] {
-  const datesByHabit = new Map<string, string[]>()
+  const checkInsByHabit = new Map<string, { localDate: string; value: number }[]>()
   for (const checkIn of checkIns) {
-    const dates = datesByHabit.get(checkIn.habit_id) ?? []
-    dates.push(checkIn.local_date)
-    datesByHabit.set(checkIn.habit_id, dates)
+    const entries = checkInsByHabit.get(checkIn.habit_id) ?? []
+    entries.push({ localDate: checkIn.local_date, value: Number(checkIn.value) })
+    checkInsByHabit.set(checkIn.habit_id, entries)
   }
   return rows.map((row) => {
-    const completedDates = [...new Set(datesByHabit.get(row.id) ?? [])].sort()
+    const checkIns = (checkInsByHabit.get(row.id) ?? []).sort((a, b) => a.localDate.localeCompare(b.localDate))
+    const target = Number(row.target)
+    const completedDates = checkIns.filter((entry) => entry.value >= target).map((entry) => entry.localDate)
     return {
       id: row.id,
       userId: row.user_id,
       title: row.title,
       cue: row.cue ?? '',
-      target: Number(row.target),
+      target,
       unit: row.unit,
+      type: row.habit_type,
       streak: calculateCurrentStreak(completedDates, localDate),
       completedDates,
+      checkIns,
     }
   })
 }
@@ -255,8 +262,8 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         client.from('task_occurrences').select('task_id,local_date,status').eq('user_id', userId),
         client.from('goals').select('id,user_id,title,description,target_date,status,updated_at').eq('user_id', userId).is('deleted_at', null).order('created_at'),
         client.from('milestones').select('id,user_id,goal_id,title,target_date,status,sort_order,updated_at').eq('user_id', userId).is('deleted_at', null).order('sort_order'),
-        client.from('habits').select('id,user_id,title,cue,target,unit').eq('user_id', userId).is('deleted_at', null).order('created_at'),
-        client.from('habit_checkins').select('habit_id,local_date').eq('user_id', userId).order('local_date'),
+        client.from('habits').select('id,user_id,title,cue,target,unit,habit_type').eq('user_id', userId).is('deleted_at', null).order('created_at'),
+        client.from('habit_checkins').select('habit_id,local_date,value').eq('user_id', userId).order('local_date'),
         client.from('point_transactions').select('amount').eq('user_id', userId),
         client.from('focus_sessions').select('elapsed_seconds').eq('user_id', userId).gte('created_at', focusSince),
       ])
@@ -438,13 +445,13 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
     },
 
     async createHabit(userId, input) {
-      const { error } = await client.from('habits').insert({ id: input.entityId, user_id: userId, title: input.title, cue: input.cue || null, target: input.target, unit: input.unit, idempotency_key: input.idempotencyKey })
+      const { error } = await client.from('habits').insert({ id: input.entityId, user_id: userId, title: input.title, cue: input.cue || null, target: input.target, unit: input.unit, habit_type: input.type, idempotency_key: input.idempotencyKey })
       return idempotentWrite(error)
     },
 
-    async setHabitCheckIn(userId, habitId, localDate, completed) {
-      const query = completed
-        ? client.from('habit_checkins').upsert({ user_id: userId, habit_id: habitId, local_date: localDate, value: 1 }, { onConflict: 'habit_id,local_date' })
+    async setHabitCheckIn(userId, habitId, localDate, value) {
+      const query = value !== null
+        ? client.from('habit_checkins').upsert({ user_id: userId, habit_id: habitId, local_date: localDate, value }, { onConflict: 'habit_id,local_date' })
         : client.from('habit_checkins').delete().eq('user_id', userId).eq('habit_id', habitId).eq('local_date', localDate)
       const { error } = await query
       return error ? failure(error) : ok()

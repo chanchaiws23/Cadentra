@@ -25,7 +25,7 @@ type PendingMutation = { conflict?: string } & (
   | { id: string; type: 'task.delete'; taskId: string }
   | { id: string; type: 'task.restore'; taskId: string }
   | { id: string; type: 'habit.create'; input: CreateHabitInput }
-  | { id: string; type: 'habit.checkin'; habitId: string; localDate: string; completed: boolean }
+  | { id: string; type: 'habit.checkin'; habitId: string; localDate: string; value: number | null }
   | { id: string; type: 'points.record'; sourceType: string; sourceId: string; amount: number; reason: string }
   | { id: string; type: 'focus.record'; taskId?: string; plannedMinutes: number; elapsedSeconds: number }
 )
@@ -71,6 +71,12 @@ export function createOfflineUserDataGateway(
     cache.snapshot.goals ??= []
     cache.snapshot.milestones ??= []
     cache.snapshot.taskOccurrences ??= []
+    cache.snapshot.habits ??= []
+    cache.snapshot.habits = cache.snapshot.habits.map((habit) => ({
+      ...habit,
+      type: habit.type ?? 'boolean',
+      checkIns: habit.checkIns ?? habit.completedDates.map((localDate) => ({ localDate, value: habit.target })),
+    }))
     cache.deletedTasks ??= []
     cache.deletedGoals ??= []
     cache.deletedMilestones ??= []
@@ -177,16 +183,17 @@ export function createOfflineUserDataGateway(
       case 'habit.create':
         snapshot.habits.push({
           id: mutation.input.entityId!, userId, title: mutation.input.title, cue: mutation.input.cue,
-          target: mutation.input.target, unit: mutation.input.unit, streak: 0, completedDates: [],
+          target: mutation.input.target, unit: mutation.input.unit, type: mutation.input.type, streak: 0, completedDates: [], checkIns: [],
         })
         break
       case 'habit.checkin': {
         const habit = snapshot.habits.find((entry) => entry.id === mutation.habitId)
         if (!habit) break
-        const dates = new Set(habit.completedDates)
-        if (mutation.completed) dates.add(mutation.localDate)
-        else dates.delete(mutation.localDate)
-        habit.completedDates = [...dates].sort()
+        const remaining = habit.checkIns.filter((entry) => entry.localDate !== mutation.localDate)
+        habit.checkIns = mutation.value === null
+          ? remaining
+          : [...remaining, { localDate: mutation.localDate, value: mutation.value }].sort((a, b) => a.localDate.localeCompare(b.localDate))
+        habit.completedDates = habit.checkIns.filter((entry) => entry.value >= habit.target).map((entry) => entry.localDate)
         habit.streak = calculateCurrentStreak(habit.completedDates, mutation.localDate)
         break
       }
@@ -224,7 +231,7 @@ export function createOfflineUserDataGateway(
       case 'task.delete': return remote.softDeleteTask(userId, mutation.taskId)
       case 'task.restore': return remote.restoreTask(userId, mutation.taskId)
       case 'habit.create': return remote.createHabit(userId, mutation.input)
-      case 'habit.checkin': return remote.setHabitCheckIn(userId, mutation.habitId, mutation.localDate, mutation.completed)
+      case 'habit.checkin': return remote.setHabitCheckIn(userId, mutation.habitId, mutation.localDate, mutation.value)
       case 'points.record': return remote.recordPoints(userId, mutation.sourceType, mutation.sourceId, mutation.amount, mutation.reason, mutation.id)
       case 'focus.record': return remote.recordFocusSession(userId, mutation.taskId, mutation.plannedMinutes, mutation.elapsedSeconds, mutation.id)
     }
@@ -324,7 +331,7 @@ export function createOfflineUserDataGateway(
       const id = createId()
       return mutate(userId, { id, type: 'habit.create', input: { ...input, entityId: input.entityId ?? createId(), idempotencyKey: input.idempotencyKey ?? id } })
     },
-    setHabitCheckIn: (userId, habitId, localDate, completed) => mutate(userId, { id: createId(), type: 'habit.checkin', habitId, localDate, completed }),
+    setHabitCheckIn: (userId, habitId, localDate, value) => mutate(userId, { id: createId(), type: 'habit.checkin', habitId, localDate, value }),
     recordPoints: (userId, sourceType, sourceId, amount, reason) => mutate(userId, { id: createId(), type: 'points.record', sourceType, sourceId, amount, reason }),
     recordFocusSession: (userId, taskId, plannedMinutes, elapsedSeconds) => mutate(userId, { id: createId(), type: 'focus.record', taskId, plannedMinutes, elapsedSeconds }),
     syncPending,

@@ -20,7 +20,7 @@ const snapshot: UserDataSnapshot = {
   taskOccurrences: [],
   goals: [],
   milestones: [],
-  habits: [{ id: 'habit-1', userId: 'user-1', title: 'Read', cue: '', target: 20, unit: 'minutes', streak: 0, completedDates: [] }],
+  habits: [{ id: 'habit-1', userId: 'user-1', title: 'Read', cue: '', target: 20, unit: 'minutes', type: 'duration', streak: 0, completedDates: [], checkIns: [] }],
   points: 0,
   focusMinutes: 0,
 }
@@ -80,12 +80,13 @@ describe('offline user data gateway', () => {
     const createdTask = await gateway.createTask('user-1', {
       title: 'Offline task', start: '2026-08-10T03:00:00.000Z', end: '2026-08-10T04:00:00.000Z',
     })
-    await gateway.setHabitCheckIn('user-1', 'habit-1', '2026-08-10', true)
+    await gateway.setHabitCheckIn('user-1', 'habit-1', '2026-08-10', 20)
     await gateway.recordPoints('user-1', 'habit', 'habit-1', 8, 'habit_checked_in')
 
     const optimistic = await gateway.load('user-1', '', '2026-08-10')
     expect(optimistic.ok && optimistic.value.tasks.some((task) => task.title === 'Offline task')).toBe(true)
     expect(optimistic.ok && optimistic.value.habits[0].completedDates).toContain('2026-08-10')
+    expect(optimistic.ok && optimistic.value.habits[0].checkIns[0].value).toBe(20)
     expect(optimistic.ok && optimistic.value.points).toBe(8)
     expect(createdTask).toEqual({ ok: true, value: 'generated-2' })
     expect(gateway.pendingCount?.('user-1')).toBe(3)

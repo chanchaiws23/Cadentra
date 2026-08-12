@@ -30,15 +30,20 @@ describe('cloud data mapping', () => {
 
   it('builds habit completion and current streak from check-ins', () => {
     const habits = buildHabits(
-      [{ id: 'habit-1', user_id: 'user-1', title: 'Read', cue: null, target: '20', unit: 'minutes' }],
+      [{ id: 'habit-1', user_id: 'user-1', title: 'Read', cue: null, target: '20', unit: 'minutes', habit_type: 'duration' }],
       [
-        { habit_id: 'habit-1', local_date: '2026-08-08' },
-        { habit_id: 'habit-1', local_date: '2026-08-09' },
-        { habit_id: 'habit-1', local_date: '2026-08-10' },
+        { habit_id: 'habit-1', local_date: '2026-08-08', value: 20 },
+        { habit_id: 'habit-1', local_date: '2026-08-09', value: 25 },
+        { habit_id: 'habit-1', local_date: '2026-08-10', value: 10 },
       ],
       '2026-08-10',
     )
-    expect(habits[0]).toMatchObject({ target: 20, streak: 3, completedDates: ['2026-08-08', '2026-08-09', '2026-08-10'] })
+    expect(habits[0]).toMatchObject({ target: 20, type: 'duration', streak: 2, completedDates: ['2026-08-08', '2026-08-09'] })
+    expect(habits[0].checkIns).toEqual([
+      { localDate: '2026-08-08', value: 20 },
+      { localDate: '2026-08-09', value: 25 },
+      { localDate: '2026-08-10', value: 10 },
+    ])
     expect(calculateCurrentStreak(['2026-08-08', '2026-08-09'], '2026-08-10')).toBe(2)
   })
 
