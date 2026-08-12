@@ -23,6 +23,7 @@ const snapshot: UserDataSnapshot = {
   habits: [{ id: 'habit-1', userId: 'user-1', title: 'Read', cue: '', target: 20, unit: 'minutes', type: 'duration', recurrenceRule: 'FREQ=DAILY', freezeBalance: 1, streak: 0, completedDates: [], checkIns: [] }],
   points: 0,
   focusMinutes: 0,
+  focusSessions: [],
 }
 
 function remoteGateway(): UserDataGateway {
@@ -117,6 +118,27 @@ describe('offline user data gateway', () => {
     online = true
     expect(await gateway.syncPending?.('user-1')).toMatchObject({ ok: true, value: { synced: 1, pending: 0 } })
     expect(remote.useHabitFreeze).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a completed focus session available while offline', async () => {
+    let online = true
+    let sequence = 0
+    const remote = remoteGateway()
+    const gateway = createOfflineUserDataGateway(remote, new MemoryStorage(), { isOnline: () => online, createId: () => `focus-${++sequence}` })
+    await gateway.load('user-1', '', '2026-08-10')
+
+    online = false
+    await gateway.recordFocusSession('user-1', {
+      taskId: 'task-1', plannedMinutes: 25, elapsedSeconds: 900, pauseSeconds: 60,
+      interruptions: [{ reason: 'ข้อความเข้า', recordedAt: '2026-08-10T03:10:00Z', elapsedSeconds: 300 }],
+    })
+    const cached = await gateway.load('user-1', '', '2026-08-10')
+    expect(cached.ok && cached.value.focusSessions[0]).toMatchObject({ id: 'focus-2', interruptionCount: 1, pauseSeconds: 60 })
+    expect(cached.ok && cached.value.focusMinutes).toBe(15)
+
+    online = true
+    await gateway.syncPending?.('user-1')
+    expect(remote.recordFocusSession).toHaveBeenCalledWith('user-1', expect.objectContaining({ entityId: 'focus-2' }), 'focus-1')
   })
 
   it('stops on a version conflict and can force the local task status', async () => {

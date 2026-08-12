@@ -1,5 +1,5 @@
 import type { Goal, ItemStatus, Milestone, Task } from '@cadentra/domain'
-import { calculateHabitStreak, type CreateGoalInput, type CreateHabitInput, type CreateMilestoneInput, type CreateTaskInput, type UpdateProfileInput, type UserDataGateway, type UserDataSnapshot } from './cloud-data'
+import { calculateHabitStreak, type CreateGoalInput, type CreateHabitInput, type CreateMilestoneInput, type CreateTaskInput, type RecordFocusSessionInput, type UpdateProfileInput, type UserDataGateway, type UserDataSnapshot } from './cloud-data'
 import { dataError, type DataResult } from './repository'
 
 export interface StorageAdapter {
@@ -28,7 +28,7 @@ type PendingMutation = { conflict?: string } & (
   | { id: string; type: 'habit.checkin'; habitId: string; localDate: string; value: number | null }
   | { id: string; type: 'habit.freeze'; habitId: string; localDate: string }
   | { id: string; type: 'points.record'; sourceType: string; sourceId: string; amount: number; reason: string }
-  | { id: string; type: 'focus.record'; taskId?: string; plannedMinutes: number; elapsedSeconds: number }
+  | { id: string; type: 'focus.record'; input: RecordFocusSessionInput }
 )
 
 interface CachedUserData {
@@ -56,7 +56,7 @@ function readJson<T>(storage: StorageAdapter, key: string, fallback: T): T {
 }
 
 function defaultCache(): CachedUserData {
-  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0 }, deletedTasks: [], deletedGoals: [], deletedMilestones: [] }
+  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0, focusSessions: [] }, deletedTasks: [], deletedGoals: [], deletedMilestones: [] }
 }
 
 export function createOfflineUserDataGateway(
@@ -73,6 +73,7 @@ export function createOfflineUserDataGateway(
     cache.snapshot.milestones ??= []
     cache.snapshot.taskOccurrences ??= []
     cache.snapshot.habits ??= []
+    cache.snapshot.focusSessions ??= []
     cache.snapshot.habits = cache.snapshot.habits.map((habit) => ({
       ...habit,
       type: habit.type ?? 'boolean',
@@ -211,9 +212,19 @@ export function createOfflineUserDataGateway(
       case 'points.record':
         snapshot.points += mutation.amount
         break
-      case 'focus.record':
-        snapshot.focusMinutes += Math.floor(mutation.elapsedSeconds / 60)
+      case 'focus.record': {
+        const endedAt = new Date().toISOString()
+        snapshot.focusMinutes += Math.floor(mutation.input.elapsedSeconds / 60)
+        snapshot.focusSessions.unshift({
+          id: mutation.input.entityId!, userId, taskId: mutation.input.taskId,
+          plannedMinutes: mutation.input.plannedMinutes, elapsedSeconds: mutation.input.elapsedSeconds,
+          pauseSeconds: mutation.input.pauseSeconds, interruptionCount: mutation.input.interruptions.length,
+          interruptions: mutation.input.interruptions,
+          startedAt: new Date(Date.now() - (mutation.input.elapsedSeconds + mutation.input.pauseSeconds) * 1_000).toISOString(),
+          endedAt, status: 'completed',
+        })
         break
+      }
     }
     writeCache(userId, cache)
   }
@@ -245,7 +256,7 @@ export function createOfflineUserDataGateway(
       case 'habit.checkin': return remote.setHabitCheckIn(userId, mutation.habitId, mutation.localDate, mutation.value)
       case 'habit.freeze': return remote.useHabitFreeze(userId, mutation.habitId, mutation.localDate)
       case 'points.record': return remote.recordPoints(userId, mutation.sourceType, mutation.sourceId, mutation.amount, mutation.reason, mutation.id)
-      case 'focus.record': return remote.recordFocusSession(userId, mutation.taskId, mutation.plannedMinutes, mutation.elapsedSeconds, mutation.id)
+      case 'focus.record': return remote.recordFocusSession(userId, mutation.input, mutation.id)
     }
   }
 
@@ -346,7 +357,10 @@ export function createOfflineUserDataGateway(
     setHabitCheckIn: (userId, habitId, localDate, value) => mutate(userId, { id: createId(), type: 'habit.checkin', habitId, localDate, value }),
     useHabitFreeze: (userId, habitId, localDate) => mutate(userId, { id: createId(), type: 'habit.freeze', habitId, localDate }),
     recordPoints: (userId, sourceType, sourceId, amount, reason) => mutate(userId, { id: createId(), type: 'points.record', sourceType, sourceId, amount, reason }),
-    recordFocusSession: (userId, taskId, plannedMinutes, elapsedSeconds) => mutate(userId, { id: createId(), type: 'focus.record', taskId, plannedMinutes, elapsedSeconds }),
+    recordFocusSession(userId, input) {
+      const id = createId()
+      return mutate(userId, { id, type: 'focus.record', input: { ...input, entityId: input.entityId ?? createId() } })
+    },
     syncPending,
     pendingCount: (userId) => readQueue(userId).length,
     syncIssues: (userId) => readQueue(userId).filter((mutation) => mutation.conflict).map((mutation) => ({

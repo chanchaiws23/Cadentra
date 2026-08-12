@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Goal, Habit, HabitType, ItemStatus, Milestone, Priority, Task, TaskOccurrence, UserProfile } from '@cadentra/domain'
+import type { FocusInterruption, FocusSession, Goal, Habit, HabitType, ItemStatus, Milestone, Priority, Task, TaskOccurrence, UserProfile } from '@cadentra/domain'
 import { dataError, type DataResult } from './repository'
 
 export interface UserDataSnapshot {
@@ -11,6 +11,7 @@ export interface UserDataSnapshot {
   milestones: Milestone[]
   points: number
   focusMinutes: number
+  focusSessions: FocusSession[]
 }
 
 export interface CreateTaskInput {
@@ -53,6 +54,15 @@ export interface CreateHabitInput {
   recurrenceRule: string
 }
 
+export interface RecordFocusSessionInput {
+  entityId?: string
+  taskId?: string
+  plannedMinutes: number
+  elapsedSeconds: number
+  pauseSeconds: number
+  interruptions: FocusInterruption[]
+}
+
 export type UpdateProfileInput = Omit<UserProfile, 'id'>
 
 export interface AccountExport {
@@ -84,7 +94,7 @@ export interface UserDataGateway {
   setHabitCheckIn(userId: string, habitId: string, localDate: string, value: number | null): Promise<DataResult<void>>
   useHabitFreeze(userId: string, habitId: string, localDate: string): Promise<DataResult<void>>
   recordPoints(userId: string, sourceType: string, sourceId: string, amount: number, reason: string, idempotencyKey?: string): Promise<DataResult<void>>
-  recordFocusSession(userId: string, taskId: string | undefined, plannedMinutes: number, elapsedSeconds: number, idempotencyKey?: string): Promise<DataResult<void>>
+  recordFocusSession(userId: string, input: RecordFocusSessionInput, idempotencyKey?: string): Promise<DataResult<void>>
   syncPending?(userId: string): Promise<DataResult<{ synced: number; pending: number }>>
   pendingCount?(userId: string): number
   syncIssues?(userId: string): SyncIssue[]
@@ -161,6 +171,19 @@ interface ProfileRow {
   health_ai_consent: boolean
 }
 
+interface FocusSessionRow {
+  id: string
+  user_id: string
+  task_id: string | null
+  planned_minutes: number
+  elapsed_seconds: number
+  pause_seconds: number
+  interruption_count: number
+  interruptions: FocusInterruption[]
+  started_at: string
+  ended_at: string
+}
+
 export function mapProfileRow(row: ProfileRow | null): UserProfile | null {
   return row ? {
     id: row.id,
@@ -196,6 +219,22 @@ export function mapGoalRow(row: GoalRow): Goal {
 
 export function mapMilestoneRow(row: MilestoneRow): Milestone {
   return { id: row.id, userId: row.user_id, goalId: row.goal_id, title: row.title, targetDate: row.target_date ?? undefined, status: row.status, sortOrder: row.sort_order, updatedAt: row.updated_at }
+}
+
+export function mapFocusSessionRow(row: FocusSessionRow): FocusSession {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    taskId: row.task_id ?? undefined,
+    plannedMinutes: row.planned_minutes,
+    elapsedSeconds: row.elapsed_seconds,
+    pauseSeconds: row.pause_seconds,
+    interruptionCount: row.interruption_count,
+    interruptions: row.interruptions ?? [],
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    status: 'completed',
+  }
 }
 
 function dateBefore(localDate: string, days: number): string {
@@ -294,7 +333,7 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         client.from('habits').select('id,user_id,title,cue,target,unit,habit_type,recurrence_rule,freeze_balance').eq('user_id', userId).is('deleted_at', null).order('created_at'),
         client.from('habit_checkins').select('habit_id,local_date,value,is_freeze').eq('user_id', userId).order('local_date'),
         client.from('point_transactions').select('amount').eq('user_id', userId),
-        client.from('focus_sessions').select('elapsed_seconds').eq('user_id', userId).gte('created_at', focusSince),
+        client.from('focus_sessions').select('id,user_id,task_id,planned_minutes,elapsed_seconds,pause_seconds,interruption_count,interruptions,started_at,ended_at').eq('user_id', userId).gte('created_at', focusSince).order('started_at', { ascending: false }),
       ])
       const error = profile.error ?? tasks.error ?? taskOccurrences.error ?? goals.error ?? milestones.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error
       if (error) return failure(error)
@@ -308,7 +347,8 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
           milestones: (milestones.data as MilestoneRow[]).map(mapMilestoneRow),
           habits: buildHabits(habits.data as HabitRow[], checkIns.data as HabitCheckInRow[], localDate),
           points: (points.data as { amount: number }[]).reduce((total, entry) => total + entry.amount, 0),
-          focusMinutes: Math.floor((focusSessions.data as { elapsed_seconds: number }[]).reduce((total, entry) => total + entry.elapsed_seconds, 0) / 60),
+          focusMinutes: Math.floor((focusSessions.data as FocusSessionRow[]).reduce((total, entry) => total + entry.elapsed_seconds, 0) / 60),
+          focusSessions: (focusSessions.data as FocusSessionRow[]).map(mapFocusSessionRow),
         },
       }
     },
@@ -496,14 +536,18 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
       return idempotentWrite(error)
     },
 
-    async recordFocusSession(userId, taskId, plannedMinutes, elapsedSeconds, idempotencyKey) {
+    async recordFocusSession(userId, input, idempotencyKey) {
       const now = new Date().toISOString()
       const { error } = await client.from('focus_sessions').insert({
+        id: input.entityId,
         user_id: userId,
-        task_id: taskId ?? null,
-        planned_minutes: plannedMinutes,
-        elapsed_seconds: elapsedSeconds,
-        started_at: new Date(Date.now() - elapsedSeconds * 1_000).toISOString(),
+        task_id: input.taskId ?? null,
+        planned_minutes: input.plannedMinutes,
+        elapsed_seconds: input.elapsedSeconds,
+        pause_seconds: input.pauseSeconds,
+        interruption_count: input.interruptions.length,
+        interruptions: input.interruptions,
+        started_at: new Date(Date.now() - (input.elapsedSeconds + input.pauseSeconds) * 1_000).toISOString(),
         ended_at: now,
         idempotency_key: idempotencyKey,
       })

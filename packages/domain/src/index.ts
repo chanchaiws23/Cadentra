@@ -81,13 +81,24 @@ export interface Habit {
   checkIns: HabitCheckIn[]
 }
 
+export interface FocusInterruption {
+  reason: string
+  recordedAt: string
+  elapsedSeconds: number
+}
+
 export interface FocusSession {
   id: string
   userId: string
   taskId?: string
   plannedMinutes: number
   elapsedSeconds: number
-  status: 'idle' | 'running' | 'paused' | 'completed'
+  pauseSeconds: number
+  interruptionCount: number
+  interruptions: FocusInterruption[]
+  startedAt: string
+  endedAt: string
+  status: 'completed'
 }
 
 export interface AIProposalChange {
