@@ -20,7 +20,7 @@ const snapshot: UserDataSnapshot = {
   taskOccurrences: [],
   goals: [],
   milestones: [],
-  habits: [{ id: 'habit-1', userId: 'user-1', title: 'Read', cue: '', target: 20, unit: 'minutes', type: 'duration', streak: 0, completedDates: [], checkIns: [] }],
+  habits: [{ id: 'habit-1', userId: 'user-1', title: 'Read', cue: '', target: 20, unit: 'minutes', type: 'duration', recurrenceRule: 'FREQ=DAILY', freezeBalance: 1, streak: 0, completedDates: [], checkIns: [] }],
   points: 0,
   focusMinutes: 0,
 }
@@ -47,6 +47,7 @@ function remoteGateway(): UserDataGateway {
     restoreTask: vi.fn(async () => ({ ok: true as const, value: undefined })),
     createHabit: vi.fn(async () => ({ ok: true as const, value: undefined })),
     setHabitCheckIn: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    useHabitFreeze: vi.fn(async () => ({ ok: true as const, value: undefined })),
     recordPoints: vi.fn(async () => ({ ok: true as const, value: undefined })),
     recordFocusSession: vi.fn(async () => ({ ok: true as const, value: undefined })),
   }
@@ -99,6 +100,23 @@ describe('offline user data gateway', () => {
     }))
     expect(remote.recordPoints).toHaveBeenCalledWith('user-1', 'habit', 'habit-1', 8, 'habit_checked_in', 'generated-4')
     expect(gateway.pendingCount?.('user-1')).toBe(0)
+  })
+
+  it('queues a streak freeze without spending the balance twice', async () => {
+    let online = true
+    const remote = remoteGateway()
+    const gateway = createOfflineUserDataGateway(remote, new MemoryStorage(), { isOnline: () => online, createId: () => 'freeze-mutation' })
+    await gateway.load('user-1', '', '2026-08-10')
+
+    online = false
+    await gateway.useHabitFreeze('user-1', 'habit-1', '2026-08-10')
+    const cached = await gateway.load('user-1', '', '2026-08-10')
+    expect(cached.ok && cached.value.habits[0]).toMatchObject({ freezeBalance: 0, streak: 1 })
+    expect(cached.ok && cached.value.habits[0].checkIns[0]).toMatchObject({ localDate: '2026-08-10', frozen: true })
+
+    online = true
+    expect(await gateway.syncPending?.('user-1')).toMatchObject({ ok: true, value: { synced: 1, pending: 0 } })
+    expect(remote.useHabitFreeze).toHaveBeenCalledTimes(1)
   })
 
   it('stops on a version conflict and can force the local task status', async () => {

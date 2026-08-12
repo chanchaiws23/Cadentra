@@ -1,5 +1,5 @@
 import type { Goal, ItemStatus, Milestone, Task } from '@cadentra/domain'
-import { calculateCurrentStreak, type CreateGoalInput, type CreateHabitInput, type CreateMilestoneInput, type CreateTaskInput, type UpdateProfileInput, type UserDataGateway, type UserDataSnapshot } from './cloud-data'
+import { calculateHabitStreak, type CreateGoalInput, type CreateHabitInput, type CreateMilestoneInput, type CreateTaskInput, type UpdateProfileInput, type UserDataGateway, type UserDataSnapshot } from './cloud-data'
 import { dataError, type DataResult } from './repository'
 
 export interface StorageAdapter {
@@ -26,6 +26,7 @@ type PendingMutation = { conflict?: string } & (
   | { id: string; type: 'task.restore'; taskId: string }
   | { id: string; type: 'habit.create'; input: CreateHabitInput }
   | { id: string; type: 'habit.checkin'; habitId: string; localDate: string; value: number | null }
+  | { id: string; type: 'habit.freeze'; habitId: string; localDate: string }
   | { id: string; type: 'points.record'; sourceType: string; sourceId: string; amount: number; reason: string }
   | { id: string; type: 'focus.record'; taskId?: string; plannedMinutes: number; elapsedSeconds: number }
 )
@@ -75,7 +76,9 @@ export function createOfflineUserDataGateway(
     cache.snapshot.habits = cache.snapshot.habits.map((habit) => ({
       ...habit,
       type: habit.type ?? 'boolean',
-      checkIns: habit.checkIns ?? habit.completedDates.map((localDate) => ({ localDate, value: habit.target })),
+      recurrenceRule: habit.recurrenceRule ?? 'FREQ=DAILY',
+      freezeBalance: habit.freezeBalance ?? 0,
+      checkIns: (habit.checkIns ?? habit.completedDates.map((localDate) => ({ localDate, value: habit.target, frozen: false }))).map((entry) => ({ ...entry, frozen: entry.frozen ?? false })),
     }))
     cache.deletedTasks ??= []
     cache.deletedGoals ??= []
@@ -183,7 +186,7 @@ export function createOfflineUserDataGateway(
       case 'habit.create':
         snapshot.habits.push({
           id: mutation.input.entityId!, userId, title: mutation.input.title, cue: mutation.input.cue,
-          target: mutation.input.target, unit: mutation.input.unit, type: mutation.input.type, streak: 0, completedDates: [], checkIns: [],
+          target: mutation.input.target, unit: mutation.input.unit, type: mutation.input.type, recurrenceRule: mutation.input.recurrenceRule, freezeBalance: 1, streak: 0, completedDates: [], checkIns: [],
         })
         break
       case 'habit.checkin': {
@@ -192,9 +195,17 @@ export function createOfflineUserDataGateway(
         const remaining = habit.checkIns.filter((entry) => entry.localDate !== mutation.localDate)
         habit.checkIns = mutation.value === null
           ? remaining
-          : [...remaining, { localDate: mutation.localDate, value: mutation.value }].sort((a, b) => a.localDate.localeCompare(b.localDate))
+          : [...remaining, { localDate: mutation.localDate, value: mutation.value, frozen: false }].sort((a, b) => a.localDate.localeCompare(b.localDate))
         habit.completedDates = habit.checkIns.filter((entry) => entry.value >= habit.target).map((entry) => entry.localDate)
-        habit.streak = calculateCurrentStreak(habit.completedDates, mutation.localDate)
+        habit.streak = calculateHabitStreak(habit.checkIns, habit.target, habit.recurrenceRule, mutation.localDate)
+        break
+      }
+      case 'habit.freeze': {
+        const habit = snapshot.habits.find((entry) => entry.id === mutation.habitId)
+        if (!habit || habit.freezeBalance < 1 || habit.checkIns.some((entry) => entry.localDate === mutation.localDate)) break
+        habit.freezeBalance -= 1
+        habit.checkIns = [...habit.checkIns, { localDate: mutation.localDate, value: 0, frozen: true }].sort((a, b) => a.localDate.localeCompare(b.localDate))
+        habit.streak = calculateHabitStreak(habit.checkIns, habit.target, habit.recurrenceRule, mutation.localDate)
         break
       }
       case 'points.record':
@@ -232,6 +243,7 @@ export function createOfflineUserDataGateway(
       case 'task.restore': return remote.restoreTask(userId, mutation.taskId)
       case 'habit.create': return remote.createHabit(userId, mutation.input)
       case 'habit.checkin': return remote.setHabitCheckIn(userId, mutation.habitId, mutation.localDate, mutation.value)
+      case 'habit.freeze': return remote.useHabitFreeze(userId, mutation.habitId, mutation.localDate)
       case 'points.record': return remote.recordPoints(userId, mutation.sourceType, mutation.sourceId, mutation.amount, mutation.reason, mutation.id)
       case 'focus.record': return remote.recordFocusSession(userId, mutation.taskId, mutation.plannedMinutes, mutation.elapsedSeconds, mutation.id)
     }
@@ -332,6 +344,7 @@ export function createOfflineUserDataGateway(
       return mutate(userId, { id, type: 'habit.create', input: { ...input, entityId: input.entityId ?? createId(), idempotencyKey: input.idempotencyKey ?? id } })
     },
     setHabitCheckIn: (userId, habitId, localDate, value) => mutate(userId, { id: createId(), type: 'habit.checkin', habitId, localDate, value }),
+    useHabitFreeze: (userId, habitId, localDate) => mutate(userId, { id: createId(), type: 'habit.freeze', habitId, localDate }),
     recordPoints: (userId, sourceType, sourceId, amount, reason) => mutate(userId, { id: createId(), type: 'points.record', sourceType, sourceId, amount, reason }),
     recordFocusSession: (userId, taskId, plannedMinutes, elapsedSeconds) => mutate(userId, { id: createId(), type: 'focus.record', taskId, plannedMinutes, elapsedSeconds }),
     syncPending,

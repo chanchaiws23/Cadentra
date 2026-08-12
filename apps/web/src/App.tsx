@@ -139,11 +139,11 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     toast.success('บันทึกเวลาใหม่แล้ว', { description: `${formatTime(start)}–${formatTime(end)}` })
   }
 
-  const setHabitValue = async (habit: Habit, value: number | null) => {
+  const setHabitValue = async (habit: Habit, value: number | null, localDate = todayKey) => {
     if (!dataGateway || !session) return
-    const wasComplete = habit.completedDates.includes(todayKey)
+    const wasComplete = habit.completedDates.includes(localDate)
     const complete = value !== null && value >= habit.target
-    const result = await dataGateway.setHabitCheckIn(session.user.id, habit.id, todayKey, value)
+    const result = await dataGateway.setHabitCheckIn(session.user.id, habit.id, localDate, value)
     if (!result.ok) return toast.error('บันทึกนิสัยไม่สำเร็จ', { description: result.error.message })
     if (complete !== wasComplete) {
       const pointsResult = await dataGateway.recordPoints(session.user.id, 'habit', habit.id, complete ? 8 : -8, complete ? 'habit_checked_in' : 'habit_checkin_removed')
@@ -316,9 +316,17 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     toast.success('ลบ Milestone แล้ว', { action: { label: 'เลิกทำ', onClick: () => void commandHistory.undo(deleteCommand) } })
   }
 
-  const addHabit = async (title: string, cue: string, target: number, unit: string, type: HabitType) => {
+  const useHabitFreeze = async (habit: Habit, localDate: string) => {
     if (!dataGateway || !session) return
-    const result = await dataGateway.createHabit(session.user.id, { title, cue, target, unit, type })
+    const result = await dataGateway.useHabitFreeze(session.user.id, habit.id, localDate)
+    if (!result.ok) return void toast.error('ใช้ Streak Freeze ไม่สำเร็จ', { description: result.error.message })
+    await reload()
+    toast.success('ปกป้อง streak ของวันนี้แล้ว', { description: `เหลือ ${Math.max(0, habit.freezeBalance - 1)} ครั้ง` })
+  }
+
+  const addHabit = async (title: string, cue: string, target: number, unit: string, type: HabitType, recurrenceRule: string) => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.createHabit(session.user.id, { title, cue, target, unit, type, recurrenceRule })
     if (!result.ok) return toast.error('เพิ่มนิสัยไม่สำเร็จ', { description: result.error.message })
     await reload()
     setHabitAddOpen(false); notify('เพิ่มนิสัยแล้ว')
@@ -462,7 +470,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
             <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} onTask={toggleTask} onReschedule={rescheduleTask}/>}/>
             <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
             <Route path={viewPaths.goals} element={<GoalsView goals={goals} milestones={milestones} tasks={managedTasks} onCreateGoal={createGoal} onToggleGoal={toggleGoal} onDeleteGoal={deleteGoal} onCreateMilestone={createMilestone} onToggleMilestone={toggleMilestone} onDeleteMilestone={deleteMilestone}/>}/>
-            <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabitValue={setHabitValue} onAdd={() => setHabitAddOpen(true)}/>}/>
+            <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabitValue={setHabitValue} onFreeze={useHabitFreeze} onAdd={() => setHabitAddOpen(true)}/>}/>
             <Route path={viewPaths.focus} element={<FocusView tasks={managedTasks} notify={notify} onComplete={recordFocus}/>}/>
             <Route path={viewPaths.insights} element={<InsightsView tasks={managedTasks} habits={habits} points={points} focusMinutes={focusMinutes}/>}/>
             <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} onSave={saveProfile} onExport={exportAccount} onDelete={deleteAccount}/>}/>
@@ -517,19 +525,20 @@ export function AddTaskModal({ goals, tasks, onClose, onAdd }: { goals: Goal[]; 
   return <div className="modal-backdrop" onMouseDown={onClose}><form className="modal" onMouseDown={e => e.stopPropagation()} onSubmit={submit}><div className="modal-head"><div><p className="eyebrow">เพิ่มอย่างรวดเร็ว</p><h2>วางลงในวันนี้</h2></div><button type="button" className="icon-button" onClick={onClose}><X/></button></div><label>สิ่งที่ต้องทำ<input autoFocus value={title} onChange={e => { setTitle(e.target.value); setConflicts([]) }} placeholder="เช่น อ่านหนังสือ 20 นาที"/></label><div className="form-grid"><label>เริ่มเวลา<input type="time" value={time} onChange={e => { setTime(e.target.value); setConflicts([]) }}/></label><label>ระยะเวลา<select value={duration} onChange={e => { setDuration(Number(e.target.value)); setConflicts([]) }}><option value={15}>15 นาที</option><option value={30}>30 นาที</option><option value={45}>45 นาที</option><option value={60}>1 ชั่วโมง</option><option value={90}>1.5 ชั่วโมง</option></select></label></div><div className="form-grid">{goals.length > 0 && <label>เชื่อมกับเป้าหมาย<select value={goalId} onChange={e => setGoalId(e.target.value)}><option value="">ไม่เชื่อมเป้าหมาย</option>{goals.filter(goal => goal.status !== 'done').map(goal => <option value={goal.id} key={goal.id}>{goal.title}</option>)}</select></label>}<label>ทำซ้ำ<select aria-label="ทำซ้ำ" value={recurrenceRule} onChange={e => setRecurrenceRule(e.target.value)}><option value="">ไม่ทำซ้ำ</option><option value="FREQ=DAILY">ทุกวัน</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">วันจันทร์–ศุกร์</option><option value="FREQ=WEEKLY">ทุกสัปดาห์</option></select></label></div>{recurrenceRule && <p className="mt-3 text-xs text-accent">ระบบจะสร้างรอบงานเมื่อแสดงปฏิทิน โดยไม่บันทึกงานอนาคตซ้ำทั้งหมด</p>}{conflicts.length > 0 && <div className="mt-4 rounded-xl border border-[#dcc48f] bg-[#f4ecd9] p-3 text-xs"><strong className="block text-[#7a5623]">เวลานี้ชนกับ {conflicts.length} งาน</strong><ul className="mt-2 space-y-1 text-muted">{conflicts.slice(0, 3).map(task => <li key={task.id}>• {task.title} · {formatTime(task.start)}</li>)}</ul><p className="mt-2 text-muted">คุณสามารถกลับไปแก้เวลา หรือยืนยันเพื่อวางงานซ้อนกันได้</p></div>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>ยกเลิก</button>{conflicts.length > 0 && <button type="button" className="secondary" onClick={() => setConflicts([])}>แก้เวลา</button>}<button type={conflicts.length ? 'button' : 'submit'} className="primary" disabled={!title.trim()} onClick={conflicts.length ? save : undefined}>{conflicts.length ? 'ยืนยันเพิ่มงาน' : 'เพิ่มลงตาราง'}</button></div></form></div>
 }
 
-function AddHabitModal({ onClose, onAdd }: { onClose: () => void; onAdd: (title: string, cue: string, target: number, unit: string, type: HabitType) => void }) {
+function AddHabitModal({ onClose, onAdd }: { onClose: () => void; onAdd: (title: string, cue: string, target: number, unit: string, type: HabitType, recurrenceRule: string) => void }) {
   const [title, setTitle] = useState('')
   const [cue, setCue] = useState('')
   const [type, setType] = useState<HabitType>('boolean')
   const [target, setTarget] = useState(1)
   const [unit, setUnit] = useState('ครั้ง')
+  const [recurrenceRule, setRecurrenceRule] = useState('FREQ=DAILY')
   const selectType = (nextType: HabitType) => {
     setType(nextType)
     if (nextType === 'boolean') { setTarget(1); setUnit('ครั้ง') }
     if (nextType === 'count') { setTarget(Math.max(target, 1)); setUnit('ครั้ง') }
     if (nextType === 'duration') { setTarget(Math.max(target, 10)); setUnit('นาที') }
   }
-  return <div className="modal-backdrop" onMouseDown={onClose}><form className="modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); if (title.trim() && target > 0) onAdd(title.trim(), cue.trim(), target, unit.trim() || 'ครั้ง', type) }}><div className="modal-head"><div><p className="eyebrow">สร้างจังหวะใหม่</p><h2>เพิ่มนิสัย</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="ปิด"><X/></button></div><label>ชื่อนิสัย<input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="เช่น อ่านหนังสือ"/></label><label>ทำหลังจากอะไร<input value={cue} onChange={(event) => setCue(event.target.value)} placeholder="เช่น หลังอาหารเช้า"/></label><label className="mt-3">วิธีบันทึก<select value={type} onChange={(event) => selectType(event.target.value as HabitType)}><option value="boolean">ทำ / ไม่ทำ</option><option value="count">นับจำนวนครั้ง</option><option value="duration">จับระยะเวลา</option><option value="number">บันทึกตัวเลข</option></select></label>{type !== 'boolean' && <div className="form-grid"><label>เป้าหมายต่อวัน<input type="number" min="0.01" step="any" value={target} onChange={(event) => setTarget(Number(event.target.value))}/></label><label>หน่วย<input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="ครั้ง / นาที / แก้ว"/></label></div>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>ยกเลิก</button><button className="primary" disabled={!title.trim() || target <= 0}>เพิ่มนิสัย</button></div></form></div>
+  return <div className="modal-backdrop" onMouseDown={onClose}><form className="modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); if (title.trim() && target > 0) onAdd(title.trim(), cue.trim(), target, unit.trim() || 'ครั้ง', type, recurrenceRule) }}><div className="modal-head"><div><p className="eyebrow">สร้างจังหวะใหม่</p><h2>เพิ่มนิสัย</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="ปิด"><X/></button></div><label>ชื่อนิสัย<input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="เช่น อ่านหนังสือ"/></label><label>ทำหลังจากอะไร<input value={cue} onChange={(event) => setCue(event.target.value)} placeholder="เช่น หลังอาหารเช้า"/></label><div className="form-grid"><label>วิธีบันทึก<select value={type} onChange={(event) => selectType(event.target.value as HabitType)}><option value="boolean">ทำ / ไม่ทำ</option><option value="count">นับจำนวนครั้ง</option><option value="duration">จับระยะเวลา</option><option value="number">บันทึกตัวเลข</option></select></label><label>วันที่ต้องทำ<select value={recurrenceRule} onChange={(event) => setRecurrenceRule(event.target.value)}><option value="FREQ=DAILY">ทุกวัน</option><option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">จันทร์–ศุกร์</option><option value="FREQ=WEEKLY;BYDAY=SA,SU">เสาร์–อาทิตย์</option></select></label></div>{type !== 'boolean' && <div className="form-grid"><label>เป้าหมายต่อวัน<input type="number" min="0.01" step="any" value={target} onChange={(event) => setTarget(Number(event.target.value))}/></label><label>หน่วย<input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="ครั้ง / นาที / แก้ว"/></label></div>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>ยกเลิก</button><button className="primary" disabled={!title.trim() || target <= 0}>เพิ่มนิสัย</button></div></form></div>
 }
 
 export default App

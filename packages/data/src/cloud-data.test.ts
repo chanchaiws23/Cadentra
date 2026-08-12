@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildHabits, calculateCurrentStreak, mapGoalRow, mapMilestoneRow, mapProfileRow, mapTaskRow } from './cloud-data'
+import { buildHabits, calculateCurrentStreak, isHabitScheduled, mapGoalRow, mapMilestoneRow, mapProfileRow, mapTaskRow } from './cloud-data'
 
 describe('cloud data mapping', () => {
   it('maps user profile preferences without exposing database column names', () => {
@@ -30,21 +30,27 @@ describe('cloud data mapping', () => {
 
   it('builds habit completion and current streak from check-ins', () => {
     const habits = buildHabits(
-      [{ id: 'habit-1', user_id: 'user-1', title: 'Read', cue: null, target: '20', unit: 'minutes', habit_type: 'duration' }],
+      [{ id: 'habit-1', user_id: 'user-1', title: 'Read', cue: null, target: '20', unit: 'minutes', habit_type: 'duration', recurrence_rule: 'FREQ=DAILY', freeze_balance: 1 }],
       [
-        { habit_id: 'habit-1', local_date: '2026-08-08', value: 20 },
-        { habit_id: 'habit-1', local_date: '2026-08-09', value: 25 },
-        { habit_id: 'habit-1', local_date: '2026-08-10', value: 10 },
+        { habit_id: 'habit-1', local_date: '2026-08-08', value: 20, is_freeze: false },
+        { habit_id: 'habit-1', local_date: '2026-08-09', value: 0, is_freeze: true },
+        { habit_id: 'habit-1', local_date: '2026-08-10', value: 10, is_freeze: false },
       ],
       '2026-08-10',
     )
-    expect(habits[0]).toMatchObject({ target: 20, type: 'duration', streak: 2, completedDates: ['2026-08-08', '2026-08-09'] })
+    expect(habits[0]).toMatchObject({ target: 20, type: 'duration', recurrenceRule: 'FREQ=DAILY', freezeBalance: 1, streak: 2, completedDates: ['2026-08-08'] })
     expect(habits[0].checkIns).toEqual([
-      { localDate: '2026-08-08', value: 20 },
-      { localDate: '2026-08-09', value: 25 },
-      { localDate: '2026-08-10', value: 10 },
+      { localDate: '2026-08-08', value: 20, frozen: false },
+      { localDate: '2026-08-09', value: 0, frozen: true },
+      { localDate: '2026-08-10', value: 10, frozen: false },
     ])
     expect(calculateCurrentStreak(['2026-08-08', '2026-08-09'], '2026-08-10')).toBe(2)
+  })
+
+  it('recognizes scheduled rest days', () => {
+    const weekdays = 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'
+    expect(isHabitScheduled(weekdays, '2026-08-10')).toBe(true)
+    expect(isHabitScheduled(weekdays, '2026-08-09')).toBe(false)
   })
 
   it('maps goals and ordered milestones into domain models', () => {
