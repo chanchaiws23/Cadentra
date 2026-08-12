@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildHabits, calculateCurrentStreak, isHabitScheduled, mapGoalRow, mapMilestoneRow, mapProfileRow, mapTaskRow } from './cloud-data'
+import { buildHabits, calculateCurrentStreak, isHabitScheduled, mapFocusSessionRow, mapGoalRow, mapMilestoneRow, mapProfileRow, mapTaskRow } from './cloud-data'
 
 describe('cloud data mapping', () => {
   it('maps user profile preferences without exposing database column names', () => {
@@ -56,5 +56,14 @@ describe('cloud data mapping', () => {
   it('maps goals and ordered milestones into domain models', () => {
     expect(mapGoalRow({ id: 'goal-1', user_id: 'user-1', title: 'Speak English', description: null, target_date: '2026-12-31', status: 'planned', updated_at: '2026-08-10T00:00:00Z' })).toMatchObject({ id: 'goal-1', description: '', targetDate: '2026-12-31' })
     expect(mapMilestoneRow({ id: 'milestone-1', user_id: 'user-1', goal_id: 'goal-1', title: 'First conversation', target_date: null, status: 'planned', sort_order: 2, updated_at: '2026-08-10T00:00:00Z' })).toMatchObject({ goalId: 'goal-1', sortOrder: 2 })
+  })
+
+  it('maps focus detail and interruption history', () => {
+    expect(mapFocusSessionRow({
+      id: 'focus-1', user_id: 'user-1', task_id: 'task-1', planned_minutes: 25,
+      elapsed_seconds: 1_200, pause_seconds: 60, interruption_count: 1,
+      interruptions: [{ reason: 'โทรศัพท์', recordedAt: '2026-08-10T03:10:00Z', elapsedSeconds: 300 }],
+      started_at: '2026-08-10T03:00:00Z', ended_at: '2026-08-10T03:21:00Z',
+    })).toMatchObject({ id: 'focus-1', pauseSeconds: 60, interruptionCount: 1, status: 'completed' })
   })
 })

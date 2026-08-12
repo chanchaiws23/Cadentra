@@ -9,7 +9,7 @@ import {
   Undo2,
 } from 'lucide-react'
 import { collapseRecurringTasks, completionRate, findScheduleConflicts, pointsForCompletion, type Goal, type Habit, type HabitType, type Milestone, type Task } from '@cadentra/domain'
-import type { SyncIssue, UpdateProfileInput, UserDataGateway } from '@cadentra/data'
+import type { RecordFocusSessionInput, SyncIssue, UpdateProfileInput, UserDataGateway } from '@cadentra/data'
 import { PageHeading } from './components/PageHeading'
 import { AppToaster } from './components/AppToaster'
 import { useAuth } from './auth/AuthContext'
@@ -44,7 +44,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const navigate = useNavigate()
   const view = pathToView(location.pathname)
   const { snapshot, loading, error, reload, online, pendingCount, syncIssues } = useUserData(dataGateway, session?.user.id)
-  const { profile, tasks, goals, milestones, habits, points, focusMinutes } = snapshot
+  const { profile, tasks, goals, milestones, habits, points, focusMinutes, focusSessions } = snapshot
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [habitAddOpen, setHabitAddOpen] = useState(false)
@@ -358,9 +358,9 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     })
   }, [commandHistory, dataGateway, reload, session])
 
-  const recordFocus = async (task: Task | undefined, plannedMinutes: number, elapsedSeconds: number) => {
+  const recordFocus = async (input: RecordFocusSessionInput) => {
     if (!dataGateway || !session) return
-    const result = await dataGateway.recordFocusSession(session.user.id, task?.sourceTaskId ?? task?.id, plannedMinutes, elapsedSeconds)
+    const result = await dataGateway.recordFocusSession(session.user.id, input)
     if (!result.ok) return toast.error('บันทึกเวลาโฟกัสไม่สำเร็จ', { description: result.error.message })
     await reload()
   }
@@ -471,7 +471,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
             <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
             <Route path={viewPaths.goals} element={<GoalsView goals={goals} milestones={milestones} tasks={managedTasks} onCreateGoal={createGoal} onToggleGoal={toggleGoal} onDeleteGoal={deleteGoal} onCreateMilestone={createMilestone} onToggleMilestone={toggleMilestone} onDeleteMilestone={deleteMilestone}/>}/>
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabitValue={setHabitValue} onFreeze={useHabitFreeze} onAdd={() => setHabitAddOpen(true)}/>}/>
-            <Route path={viewPaths.focus} element={<FocusView tasks={managedTasks} notify={notify} onComplete={recordFocus}/>}/>
+            <Route path={viewPaths.focus} element={<FocusView tasks={managedTasks} sessions={focusSessions} notify={notify} onComplete={recordFocus}/>}/>
             <Route path={viewPaths.insights} element={<InsightsView tasks={managedTasks} habits={habits} points={points} focusMinutes={focusMinutes}/>}/>
             <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} onSave={saveProfile} onExport={exportAccount} onDelete={deleteAccount}/>}/>
             <Route path="*" element={<Navigate to={viewPaths.today} replace/>}/>

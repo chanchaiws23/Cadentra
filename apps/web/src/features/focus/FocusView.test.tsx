@@ -12,12 +12,13 @@ const task: Task = {
 }
 
 function renderFocus(notify = vi.fn()) {
+  const onComplete = vi.fn()
   render(
     <LocaleProvider>
-      <FocusView tasks={[task]} notify={notify} onComplete={vi.fn()} durationSeconds={3}/>
+      <FocusView tasks={[task]} sessions={[]} notify={notify} onComplete={onComplete} durationSeconds={3}/>
     </LocaleProvider>,
   )
-  return notify
+  return { notify, onComplete }
 }
 
 afterEach(() => {
@@ -44,13 +45,44 @@ describe('FocusView', () => {
 
   it('notifies and restores the duration when a session completes', () => {
     vi.useFakeTimers()
-    const notify = renderFocus()
+    const { notify, onComplete } = renderFocus()
 
     fireEvent.click(screen.getByRole('button', { name: 'เริ่มโฟกัส' }))
     act(() => vi.advanceTimersByTime(3_000))
 
     expect(notify).toHaveBeenCalledWith('จบช่วงโฟกัสแล้ว พักสายตาสักครู่')
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ taskId: 'task-1', elapsedSeconds: 3, interruptions: [] }))
     expect(screen.getByText('00:03')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'เริ่มโฟกัส' })).toBeTruthy()
+  })
+
+  it('records an interruption and saves a partial session', () => {
+    vi.useFakeTimers()
+    const { onComplete } = renderFocus()
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มโฟกัส' }))
+    act(() => vi.advanceTimersByTime(1_000))
+
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกสิ่งรบกวน' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'สิ่งที่รบกวน' }), { target: { value: 'ข้อความเข้า' } })
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่ม' }))
+    expect(screen.getByText('ข้อความเข้า')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'จบและบันทึก' }))
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({
+      elapsedSeconds: 1,
+      interruptions: [expect.objectContaining({ reason: 'ข้อความเข้า', elapsedSeconds: 1 })],
+    }))
+  })
+
+  it('separates paused time from focused time', () => {
+    vi.useFakeTimers()
+    const { onComplete } = renderFocus()
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มโฟกัส' }))
+    act(() => vi.advanceTimersByTime(1_000))
+    fireEvent.click(screen.getByRole('button', { name: 'หยุดชั่วคราว' }))
+    act(() => vi.advanceTimersByTime(2_000))
+    fireEvent.click(screen.getByRole('button', { name: 'จบและบันทึก' }))
+
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ elapsedSeconds: 1, pauseSeconds: 2 }))
   })
 })
