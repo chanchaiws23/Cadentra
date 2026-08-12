@@ -63,6 +63,7 @@ export type HabitType = 'boolean' | 'count' | 'duration' | 'number'
 export interface HabitCheckIn {
   localDate: string
   value: number
+  frozen: boolean
 }
 
 export interface Habit {
@@ -73,6 +74,8 @@ export interface Habit {
   target: number
   unit: string
   type: HabitType
+  recurrenceRule: string
+  freezeBalance: number
   streak: number
   completedDates: string[]
   checkIns: HabitCheckIn[]

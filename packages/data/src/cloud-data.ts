@@ -50,6 +50,7 @@ export interface CreateHabitInput {
   target: number
   unit: string
   type: HabitType
+  recurrenceRule: string
 }
 
 export type UpdateProfileInput = Omit<UserProfile, 'id'>
@@ -81,6 +82,7 @@ export interface UserDataGateway {
   restoreTask(userId: string, taskId: string): Promise<DataResult<void>>
   createHabit(userId: string, input: CreateHabitInput): Promise<DataResult<void>>
   setHabitCheckIn(userId: string, habitId: string, localDate: string, value: number | null): Promise<DataResult<void>>
+  useHabitFreeze(userId: string, habitId: string, localDate: string): Promise<DataResult<void>>
   recordPoints(userId: string, sourceType: string, sourceId: string, amount: number, reason: string, idempotencyKey?: string): Promise<DataResult<void>>
   recordFocusSession(userId: string, taskId: string | undefined, plannedMinutes: number, elapsedSeconds: number, idempotencyKey?: string): Promise<DataResult<void>>
   syncPending?(userId: string): Promise<DataResult<{ synced: number; pending: number }>>
@@ -139,12 +141,15 @@ interface HabitRow {
   target: number | string
   unit: string
   habit_type: HabitType
+  recurrence_rule: string
+  freeze_balance: number
 }
 
 interface HabitCheckInRow {
   habit_id: string
   local_date: string
   value: number | string
+  is_freeze: boolean
 }
 
 interface ProfileRow {
@@ -210,11 +215,33 @@ export function calculateCurrentStreak(completedDates: readonly string[], localD
   return streak
 }
 
+const dayCodes = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
+
+export function isHabitScheduled(recurrenceRule: string, localDate: string): boolean {
+  if (!recurrenceRule.includes('BYDAY=')) return true
+  const days = recurrenceRule.split('BYDAY=')[1]?.split(';')[0].split(',') ?? []
+  return days.includes(dayCodes[new Date(`${localDate}T12:00:00Z`).getUTCDay()])
+}
+
+export function calculateHabitStreak(checkIns: readonly { localDate: string; value: number; frozen: boolean }[], target: number, recurrenceRule: string, localDate: string): number {
+  const fulfilled = new Set(checkIns.filter((entry) => entry.frozen || entry.value >= target).map((entry) => entry.localDate))
+  let cursor = localDate
+  if (isHabitScheduled(recurrenceRule, cursor) && !fulfilled.has(cursor)) cursor = dateBefore(cursor, 1)
+  let streak = 0
+  for (let scanned = 0; scanned < 3660; scanned += 1) {
+    if (!isHabitScheduled(recurrenceRule, cursor)) { cursor = dateBefore(cursor, 1); continue }
+    if (!fulfilled.has(cursor)) break
+    streak += 1
+    cursor = dateBefore(cursor, 1)
+  }
+  return streak
+}
+
 export function buildHabits(rows: readonly HabitRow[], checkIns: readonly HabitCheckInRow[], localDate: string): Habit[] {
-  const checkInsByHabit = new Map<string, { localDate: string; value: number }[]>()
+  const checkInsByHabit = new Map<string, { localDate: string; value: number; frozen: boolean }[]>()
   for (const checkIn of checkIns) {
     const entries = checkInsByHabit.get(checkIn.habit_id) ?? []
-    entries.push({ localDate: checkIn.local_date, value: Number(checkIn.value) })
+    entries.push({ localDate: checkIn.local_date, value: Number(checkIn.value), frozen: checkIn.is_freeze })
     checkInsByHabit.set(checkIn.habit_id, entries)
   }
   return rows.map((row) => {
@@ -229,7 +256,9 @@ export function buildHabits(rows: readonly HabitRow[], checkIns: readonly HabitC
       target,
       unit: row.unit,
       type: row.habit_type,
-      streak: calculateCurrentStreak(completedDates, localDate),
+      recurrenceRule: row.recurrence_rule,
+      freezeBalance: row.freeze_balance,
+      streak: calculateHabitStreak(checkIns, target, row.recurrence_rule, localDate),
       completedDates,
       checkIns,
     }
@@ -262,8 +291,8 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         client.from('task_occurrences').select('task_id,local_date,status').eq('user_id', userId),
         client.from('goals').select('id,user_id,title,description,target_date,status,updated_at').eq('user_id', userId).is('deleted_at', null).order('created_at'),
         client.from('milestones').select('id,user_id,goal_id,title,target_date,status,sort_order,updated_at').eq('user_id', userId).is('deleted_at', null).order('sort_order'),
-        client.from('habits').select('id,user_id,title,cue,target,unit,habit_type').eq('user_id', userId).is('deleted_at', null).order('created_at'),
-        client.from('habit_checkins').select('habit_id,local_date,value').eq('user_id', userId).order('local_date'),
+        client.from('habits').select('id,user_id,title,cue,target,unit,habit_type,recurrence_rule,freeze_balance').eq('user_id', userId).is('deleted_at', null).order('created_at'),
+        client.from('habit_checkins').select('habit_id,local_date,value,is_freeze').eq('user_id', userId).order('local_date'),
         client.from('point_transactions').select('amount').eq('user_id', userId),
         client.from('focus_sessions').select('elapsed_seconds').eq('user_id', userId).gte('created_at', focusSince),
       ])
@@ -445,15 +474,20 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
     },
 
     async createHabit(userId, input) {
-      const { error } = await client.from('habits').insert({ id: input.entityId, user_id: userId, title: input.title, cue: input.cue || null, target: input.target, unit: input.unit, habit_type: input.type, idempotency_key: input.idempotencyKey })
+      const { error } = await client.from('habits').insert({ id: input.entityId, user_id: userId, title: input.title, cue: input.cue || null, target: input.target, unit: input.unit, habit_type: input.type, recurrence_rule: input.recurrenceRule, freeze_balance: 1, idempotency_key: input.idempotencyKey })
       return idempotentWrite(error)
     },
 
     async setHabitCheckIn(userId, habitId, localDate, value) {
       const query = value !== null
-        ? client.from('habit_checkins').upsert({ user_id: userId, habit_id: habitId, local_date: localDate, value }, { onConflict: 'habit_id,local_date' })
+        ? client.from('habit_checkins').upsert({ user_id: userId, habit_id: habitId, local_date: localDate, value, is_freeze: false, recorded_retroactively: localDate !== new Date().toISOString().slice(0, 10) }, { onConflict: 'habit_id,local_date' })
         : client.from('habit_checkins').delete().eq('user_id', userId).eq('habit_id', habitId).eq('local_date', localDate)
       const { error } = await query
+      return error ? failure(error) : ok()
+    },
+
+    async useHabitFreeze(_userId, habitId, localDate) {
+      const { error } = await client.rpc('use_habit_freeze', { p_habit_id: habitId, p_local_date: localDate })
       return error ? failure(error) : ok()
     },
 
