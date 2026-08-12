@@ -58,6 +58,13 @@ export interface Milestone {
   updatedAt: string
 }
 
+export type HabitType = 'boolean' | 'count' | 'duration' | 'number'
+
+export interface HabitCheckIn {
+  localDate: string
+  value: number
+}
+
 export interface Habit {
   id: string
   userId: string
@@ -65,8 +72,10 @@ export interface Habit {
   cue: string
   target: number
   unit: string
+  type: HabitType
   streak: number
   completedDates: string[]
+  checkIns: HabitCheckIn[]
 }
 
 export interface FocusSession {

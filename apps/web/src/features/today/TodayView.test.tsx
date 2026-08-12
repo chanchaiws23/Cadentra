@@ -13,7 +13,7 @@ const task: Task = {
 
 const habit: Habit = {
   id: 'habit-1', userId: 'user-1', title: 'อ่านหนังสือ', cue: 'หลังอาหารเช้า',
-  target: 20, unit: 'นาที', streak: 3, completedDates: [],
+  target: 20, unit: 'นาที', type: 'duration', streak: 3, completedDates: [], checkIns: [],
 }
 
 describe('TodayView', () => {
