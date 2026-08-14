@@ -57,6 +57,8 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const [addOpen, setAddOpen] = useState(false)
   const [habitAddOpen, setHabitAddOpen] = useState(false)
   const [coachOpen, setCoachOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission)
   const commandHistory = useCommandHistory()
   const clearHistory = commandHistory.clear
@@ -106,6 +108,21 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     window.addEventListener('keydown', handleHistoryShortcut)
     return () => window.removeEventListener('keydown', handleHistoryShortcut)
   }, [commandHistory.canRedo, commandHistory.canUndo, redoLast, undoLast])
+
+  useEffect(() => {
+    const handleAppShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setSearchOpen(true)
+      }
+      if (event.key === 'Escape') {
+        setSearchOpen(false)
+        setNotificationsOpen(false)
+      }
+    }
+    window.addEventListener('keydown', handleAppShortcut)
+    return () => window.removeEventListener('keydown', handleAppShortcut)
+  }, [])
 
   const applyTaskStatus = async (task: Task, status: Task['status'], pointsAmount: number, pointsReason: string, expectedUpdatedAt?: string) => {
     if (!dataGateway || !session) return false
@@ -597,7 +614,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
           <div className={online && pendingCount === 0 ? 'sync-status synced' : 'sync-status pending'} role="status">
             {online && pendingCount === 0 ? <Cloud size={15}/> : <CloudOff size={15}/>}<span>{syncIssues.length ? `ข้อมูลชนกัน ${syncIssues.length} รายการ` : online ? (pendingCount ? `รอซิงก์ ${pendingCount} รายการ` : 'ซิงก์แล้ว') : `ออฟไลน์${pendingCount ? ` · รอซิงก์ ${pendingCount}` : ''}`}</span>
           </div>
-          {profile?.gamificationEnabled !== false && <button className="nav-item"><Trophy size={18}/><span>เลเวล {level}</span><em>{points} XP</em></button>}
+          {profile?.gamificationEnabled !== false && <button className={view === 'insights' ? 'nav-item active' : 'nav-item'} onClick={() => { navigate(viewPaths.insights); setMenuOpen(false) }}><Trophy size={18}/><span>เลเวล {level}</span><em>{points} XP</em></button>}
           <button className={view === 'settings' ? 'nav-item active' : 'nav-item'} onClick={() => navigate(viewPaths.settings)}><Settings size={18}/><span>{t('nav.settings')}</span></button>
           <div className="profile"><div className="avatar">{displayName.slice(0, 1).toUpperCase()}</div><div><strong>{displayName}</strong><small>{accountEmail}</small></div><button type="button" className="grid size-8 place-items-center rounded-lg text-muted hover:bg-[#e3e2da] hover:text-ink" onClick={() => void handleSignOut()} aria-label="ออกจากระบบ"><LogOut size={16}/></button></div>
         </div>
@@ -606,14 +623,14 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
       <main className="workspace">
         <header className="topbar">
           <button className="icon-button mobile-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="เปิดเมนู"><Menu/></button>
-          <div className="search"><Search size={16}/><span>{t('top.search')}</span><kbd>⌘ K</kbd></div>
+          <button type="button" className="search" onClick={() => setSearchOpen(true)} aria-label="ค้นหาและไปยังหน้าต่าง ๆ"><Search size={16}/><span>{t('top.search')}</span><kbd>Ctrl K</kbd></button>
           <div className="top-actions">
             <div className="flex items-center" role="group" aria-label="ประวัติการเปลี่ยนแปลง">
               <button className="icon-button disabled:cursor-not-allowed disabled:opacity-30" disabled={!commandHistory.canUndo || commandHistory.busy} onClick={() => void undoLast()} aria-label={commandHistory.undoLabel ? `ย้อนกลับ: ${commandHistory.undoLabel}` : 'ไม่มีรายการให้ย้อนกลับ'} title={commandHistory.undoLabel ? `ย้อนกลับ: ${commandHistory.undoLabel}` : 'ไม่มีรายการให้ย้อนกลับ'}><Undo2 size={17}/></button>
               <button className="icon-button disabled:cursor-not-allowed disabled:opacity-30" disabled={!commandHistory.canRedo || commandHistory.busy} onClick={() => void redoLast()} aria-label={commandHistory.redoLabel ? `ทำซ้ำ: ${commandHistory.redoLabel}` : 'ไม่มีรายการให้ทำซ้ำ'} title={commandHistory.redoLabel ? `ทำซ้ำ: ${commandHistory.redoLabel}` : 'ไม่มีรายการให้ทำซ้ำ'}><Redo2 size={17}/></button>
             </div>
             <button className="language-button" onClick={() => setLocale(locale === 'th' ? 'en' : 'th')} aria-label={t('action.language')}><Languages size={16}/>{locale.toUpperCase()}</button>
-            <button className="icon-button" aria-label={t('top.notifications')}><Bell size={19}/><i/></button>
+            <button className="icon-button" aria-label={t('top.notifications')} aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}><Bell size={19}/>{(pendingCount > 0 || syncIssues.length > 0 || notificationPermission !== 'granted') && <i/>}</button>
             <button className="primary compact" onClick={() => setAddOpen(true)}><Plus size={17}/> {t('action.add')}</button>
           </div>
         </header>
@@ -622,7 +639,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
           {syncIssues[0] && <SyncConflictBanner issue={syncIssues[0]} onResolve={resolveSyncIssue}/>}
           {loading ? <DataLoading/> : error ? <DataLoadError message={error} onRetry={() => void reload()}/> : <Suspense fallback={<DataLoading/>}><Routes>
             <Route path="/" element={<Navigate to={viewPaths.today} replace/>}/>
-            <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={displayName} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => setCoachOpen(true)} />}/>
+            <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={displayName} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => setCoachOpen(true)} onOpenCalendar={() => navigate(viewPaths.calendar)} onStartFocus={() => navigate(viewPaths.focus)} />}/>
             <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} externalEvents={externalCalendarEvents} onTask={toggleTask} onReschedule={rescheduleTask}/>}/>
             <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
             <Route path={viewPaths.goals} element={<GoalsView goals={goals} milestones={milestones} tasks={managedTasks} onCreateGoal={createGoal} onToggleGoal={toggleGoal} onDeleteGoal={deleteGoal} onCreateMilestone={createMilestone} onToggleMilestone={toggleMilestone} onDeleteMilestone={deleteMilestone}/>}/>
@@ -639,9 +656,40 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
       {addOpen && <AddTaskModal goals={goals} tasks={tasks} onClose={() => setAddOpen(false)} onAdd={addTask}/>}
       {habitAddOpen && <AddHabitModal onClose={() => setHabitAddOpen(false)} onAdd={addHabit}/>}
       {coachOpen && <CoachDialog tasks={managedTasks} proposals={aiProposals} healthConsent={profile?.healthAiConsent === true} onClose={() => setCoachOpen(false)} onGenerate={requestAIProposal} onApply={applyAIProposal} onReject={rejectAIProposal} onUndo={undoAIProposal}/>}
+      {searchOpen && <CommandPalette
+        onClose={() => setSearchOpen(false)}
+        onNavigate={(path) => { navigate(path); setSearchOpen(false); setMenuOpen(false) }}
+        onAdd={() => { setSearchOpen(false); setAddOpen(true) }}
+        onCoach={() => { setSearchOpen(false); setCoachOpen(true) }}
+      />}
+      {notificationsOpen && <NotificationCenter
+        permission={notificationPermission}
+        pendingCount={pendingCount}
+        conflictCount={syncIssues.length}
+        nextTask={todayTasks.find((task) => task.status !== 'done')}
+        onClose={() => setNotificationsOpen(false)}
+        onSettings={() => { navigate(viewPaths.settings); setNotificationsOpen(false) }}
+      />}
       <AppToaster/>
     </div>
   )
+}
+
+function CommandPalette({ onClose, onNavigate, onAdd, onCoach }: { onClose: () => void; onNavigate: (path: string) => void; onAdd: () => void; onCoach: () => void }) {
+  const [query, setQuery] = useState('')
+  const labels: Record<View, string> = { today: 'วันนี้', calendar: 'ปฏิทิน', tasks: 'งาน', goals: 'เป้าหมาย', habits: 'นิสัย', focus: 'โฟกัส', insights: 'ข้อมูลเชิงลึก', settings: 'ตั้งค่า' }
+  const commands = [
+    ...navItems.map((item) => ({ label: labels[item.id], run: () => onNavigate(viewPaths[item.id]) })),
+    { label: 'ตั้งค่า', run: () => onNavigate(viewPaths.settings) },
+    { label: 'เพิ่มงานใหม่', run: onAdd },
+    { label: 'เปิด AI Coach', run: onCoach },
+  ]
+  const visible = commands.filter((command) => command.label.toLocaleLowerCase('th').includes(query.trim().toLocaleLowerCase('th')))
+  return <div className="modal-backdrop" onMouseDown={onClose}><section className="command-palette" role="dialog" aria-modal="true" aria-label="ค้นหาและคำสั่ง" onMouseDown={(event) => event.stopPropagation()}><div className="command-search"><Search size={18}/><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหาหน้าหรือคำสั่ง…" aria-label="ค้นหาหน้าหรือคำสั่ง"/><button type="button" className="icon-button" onClick={onClose} aria-label="ปิด"><X size={18}/></button></div><div className="command-list">{visible.map((command) => <button type="button" key={command.label} onClick={command.run}><span>{command.label}</span><em>เปิด</em></button>)}{!visible.length && <p>ไม่พบหน้าหรือคำสั่งที่ค้นหา</p>}</div></section></div>
+}
+
+function NotificationCenter({ permission, pendingCount, conflictCount, nextTask, onClose, onSettings }: { permission: NotificationPermission | 'unsupported'; pendingCount: number; conflictCount: number; nextTask?: Task; onClose: () => void; onSettings: () => void }) {
+  return <><button className="popover-scrim" onClick={onClose} aria-label="ปิดการแจ้งเตือน"/><aside className="notification-center" role="dialog" aria-modal="true" aria-label="ศูนย์การแจ้งเตือน"><div className="notification-head"><div><p className="eyebrow">สถานะล่าสุด</p><h2>การแจ้งเตือน</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="ปิด"><X size={18}/></button></div><div className="notification-list">{permission !== 'granted' && <button type="button" onClick={onSettings}><Bell size={17}/><span><strong>ยังไม่ได้เปิด Push Notification</strong><small>ไปที่ตั้งค่าเพื่ออนุญาตการแจ้งเตือนบนอุปกรณ์นี้</small></span></button>}{conflictCount > 0 && <div><AlertTriangle size={17}/><span><strong>มีข้อมูลชนกัน {conflictCount} รายการ</strong><small>เลือกเวอร์ชันที่ต้องการจากแถบแจ้งเตือนบนหน้า</small></span></div>}{pendingCount > 0 && <div><CloudOff size={17}/><span><strong>รอซิงก์ {pendingCount} รายการ</strong><small>ระบบจะส่งข้อมูลเมื่อกลับมาออนไลน์</small></span></div>}{nextTask && <div><CalendarDays size={17}/><span><strong>งานถัดไป · {nextTask.title}</strong><small>{formatTime(nextTask.start)}–{formatTime(nextTask.end)}</small></span></div>}{permission === 'granted' && pendingCount === 0 && conflictCount === 0 && !nextTask && <p>ไม่มีรายการที่ต้องจัดการในตอนนี้</p>}</div><button type="button" className="secondary w-full" onClick={onSettings}>ตั้งค่าการแจ้งเตือน</button></aside></>
 }
 
 function SyncConflictBanner({ issue, onResolve }: { issue: SyncIssue; onResolve: (issue: SyncIssue, resolution: 'local' | 'cloud') => Promise<void> }) {

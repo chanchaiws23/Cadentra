@@ -68,6 +68,8 @@ function SchedulePreview({ proposal, onCancel, onConfirm }: { proposal: Schedule
 
 export function CalendarView({ tasks, externalEvents, onTask, onReschedule }: CalendarViewProps) {
   const { t } = useI18n()
+  const [mode, setMode] = useState<'day' | 'week' | 'month'>('week')
+  const [selectedDate, setSelectedDate] = useState(() => localDateKey(new Date()))
   const weekDays = currentWorkWeek()
   const today = localDateKey(new Date())
   const visibleTasks = tasks.filter((task) => weekDays.some((day) => day.key === localDateKey(task.start)))
@@ -94,10 +96,26 @@ export function CalendarView({ tasks, externalEvents, onTask, onReschedule }: Ca
   const selectedDayIndex = selectedTask ? weekDays.findIndex((day) => day.key === localDateKey(selectedTask.start)) : -1
   const selectedHour = selectedTask ? new Date(selectedTask.start).getHours() : 0
   const selectedEndHour = selectedTask ? new Date(selectedTask.end).getHours() + new Date(selectedTask.end).getMinutes() / 60 : 0
+  const dayTasks = tasks.filter((task) => localDateKey(task.start) === selectedDate).sort((a, b) => a.start.localeCompare(b.start))
+  const dayExternalEvents = externalEvents.filter((event) => localDateKey(event.start) === selectedDate).sort((a, b) => a.start.localeCompare(b.start))
+  const monthAnchor = new Date()
+  const monthStart = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), 1)
+  const gridStart = new Date(monthStart)
+  gridStart.setDate(1 - monthStart.getDay())
+  const monthDays = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart)
+    date.setDate(gridStart.getDate() + index)
+    return date
+  })
+  const headingLabel = mode === 'month'
+    ? new Intl.DateTimeFormat('th-TH', { month: 'long', year: 'numeric' }).format(monthAnchor)
+    : mode === 'day'
+      ? new Intl.DateTimeFormat('th-TH', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${selectedDate}T12:00:00`))
+      : weekLabel
 
   return (
     <>
-      <PageHeading eyebrow={weekLabel} title={t('calendar.title')} detail="ลากงานเพื่อย้ายเวลา หรือเลือกงานเพื่อปรับอย่างละเอียด" action={<div className="segmented"><button>วัน</button><button className="active">สัปดาห์</button><button>เดือน</button></div>}/>
+      <PageHeading eyebrow={headingLabel} title={t('calendar.title')} detail="ลากงานเพื่อย้ายเวลา หรือเลือกงานเพื่อปรับอย่างละเอียด" action={<div className="segmented" role="group" aria-label="มุมมองปฏิทิน"><button aria-pressed={mode === 'day'} className={mode === 'day' ? 'active' : ''} onClick={() => { setSelectedDate(today); setMode('day') }}>วัน</button><button aria-pressed={mode === 'week'} className={mode === 'week' ? 'active' : ''} onClick={() => setMode('week')}>สัปดาห์</button><button aria-pressed={mode === 'month'} className={mode === 'month' ? 'active' : ''} onClick={() => setMode('month')}>เดือน</button></div>}/>
 
       {selectedTask && (
         <section className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-3 border-y border-[var(--line)] py-3" aria-label={`แก้ตาราง ${selectedTask.title}`}>
@@ -125,7 +143,22 @@ export function CalendarView({ tasks, externalEvents, onTask, onReschedule }: Ca
         </section>
       )}
 
-      {!visibleTasks.length && !visibleExternalEvents.length && <p className="mb-4 text-sm text-muted">ยังไม่มีงานหรือนัดหมายในสัปดาห์นี้</p>}
+      {mode === 'day' && <section className="calendar-agenda" aria-label={`ตารางวันที่ ${selectedDate}`}>
+        {!dayTasks.length && !dayExternalEvents.length && <div className="calendar-empty"><CalendarRange size={24}/><strong>วันนี้ยังไม่มีรายการ</strong><small>กด “เพิ่ม” เพื่อวางงานลงในตาราง</small></div>}
+        {dayTasks.map((task) => <button type="button" key={task.id} className={task.status === 'done' ? 'done' : ''} onClick={() => setSelectedId(task.id)}><time>{formatTime(task.start)}</time><span><strong>{task.title}</strong><small>{formatTime(task.start)}–{formatTime(task.end)} · {task.category}</small></span><em className={`priority ${task.priority}`}>{task.priority}</em></button>)}
+        {dayExternalEvents.map((event) => <div key={event.id}><time>{event.allDay ? 'ทั้งวัน' : formatTime(event.start)}</time><span><strong>{event.title}</strong><small>Google Calendar · อ่านอย่างเดียว</small></span><CalendarRange size={16}/></div>)}
+      </section>}
+
+      {mode === 'month' && <section className="calendar-month" aria-label="ปฏิทินรายเดือน">
+        {['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'].map((label) => <strong className="calendar-month-weekday" key={label}>{label}</strong>)}
+        {monthDays.map((date) => {
+          const key = localDateKey(date)
+          const count = tasks.filter((task) => localDateKey(task.start) === key).length + externalEvents.filter((event) => localDateKey(event.start) === key).length
+          return <button type="button" key={key} className={`${date.getMonth() === monthAnchor.getMonth() ? '' : 'outside'} ${key === today ? 'today' : ''}`} onClick={() => { setSelectedDate(key); setMode('day') }} aria-label={`${new Intl.DateTimeFormat('th-TH', { dateStyle: 'long' }).format(date)}${count ? ` มี ${count} รายการ` : ' ไม่มีรายการ'}`}><span>{date.getDate()}</span>{count > 0 && <em>{count}</em>}</button>
+        })}
+      </section>}
+
+      {mode === 'week' && <>{!visibleTasks.length && !visibleExternalEvents.length && <p className="mb-4 text-sm text-muted">ยังไม่มีงานหรือนัดหมายในสัปดาห์นี้</p>}
       <div className="calendar-board">
         <div className="calendar-corner">{Intl.DateTimeFormat().resolvedOptions().timeZone}</div>
         {weekDays.map(({ date, key }) => <div className={key === today ? 'calendar-day active' : 'calendar-day'} key={key}>{new Intl.DateTimeFormat('th-TH', { weekday: 'short' }).format(date)}<strong>{date.getDate()}</strong></div>)}
@@ -153,7 +186,7 @@ export function CalendarView({ tasks, externalEvents, onTask, onReschedule }: Ca
           const duration = event.allDay ? 1 : (new Date(event.end).getTime() - start.getTime()) / 3_600_000
           return <div key={event.id} className="calendar-block border-l-[#6b7280]! bg-[#ececea]! text-[#4d534e]!" title="นำเข้าจาก Google Calendar · อ่านอย่างเดียว" style={{ gridColumn: dayIndex + 2, gridRow: `${event.allDay ? 3 : Math.max(3, start.getHours() - 8 + 3)} / span ${Math.max(1, Math.round(duration))}` }}><span className="flex items-center gap-1"><CalendarRange size={10}/>{event.title}</span><small>{event.allDay ? 'ทั้งวัน · Google' : `${formatTime(event.start)} · Google`}</small></div>
         })}
-      </div>
+      </div></>}
 
       {proposal && (
         <SchedulePreview

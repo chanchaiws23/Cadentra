@@ -14,9 +14,11 @@ interface TodayViewProps {
   onTask: (task: Task) => void
   onHabit: (habit: Habit) => void
   onCoach: () => void
+  onOpenCalendar: () => void
+  onStartFocus: (task: Task) => void
 }
 
-export function TodayView({ tasks, habits, rate, completedHabits, focusMinutes, displayName, onTask, onHabit, onCoach }: TodayViewProps) {
+export function TodayView({ tasks, habits, rate, completedHabits, focusMinutes, displayName, onTask, onHabit, onCoach, onOpenCalendar, onStartFocus }: TodayViewProps) {
   const { t } = useI18n()
   const remainingTasks = tasks.filter((task) => task.status !== 'done').length
   const nextTask = tasks.find((task) => task.status !== 'done')
@@ -43,7 +45,7 @@ export function TodayView({ tasks, habits, rate, completedHabits, focusMinutes, 
         <section className="timeline-section">
           <div className="section-title">
             <div><h2>{t('today.schedule')}</h2><p>{Intl.DateTimeFormat().resolvedOptions().timeZone}</p></div>
-            <button className="text-button">{t('action.schedule')} <ChevronDown size={15}/></button>
+            <button className="text-button" onClick={onOpenCalendar}>{t('action.schedule')} <ChevronDown size={15}/></button>
           </div>
           <div className="timeline">
             {tasks.map((task) => <TimelineItem key={task.id} task={task} onToggle={() => onTask(task)}/>) }
@@ -59,7 +61,7 @@ export function TodayView({ tasks, habits, rate, completedHabits, focusMinutes, 
           <div className="next-focus">
             <span className="focus-icon"><Zap size={18}/></span>
             <div><small>{t('today.nextFocus')}</small><strong>{nextTask?.title ?? 'ยังไม่ได้เลือกงาน'}</strong></div>
-            <button aria-label="เริ่มโฟกัส" disabled={!nextTask}><Play size={16} fill="currentColor"/></button>
+            <button aria-label="เริ่มโฟกัส" disabled={!nextTask} onClick={() => nextTask && onStartFocus(nextTask)}><Play size={16} fill="currentColor"/></button>
           </div>
           <blockquote>{t('today.quote')}</blockquote>
         </aside>

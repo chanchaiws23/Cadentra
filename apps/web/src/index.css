@@ -67,3 +67,333 @@
   from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(0.98); }
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
+
+@layer components {
+  .search {
+    border: 0;
+    border-radius: 0.5rem;
+    background: transparent;
+    padding: 0.5rem;
+    cursor: pointer;
+  }
+
+  .search:hover {
+    background: #e9e8e1;
+    color: var(--ink);
+  }
+
+  .command-palette {
+    width: min(36rem, 100%);
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    background: var(--surface);
+    box-shadow: 0 30px 90px rgb(32 35 31 / 28%);
+  }
+
+  .command-search {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 0.75rem 0.75rem 1rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .command-search input {
+    min-height: 2.75rem;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    outline: 0;
+  }
+
+  .command-list {
+    max-height: min(28rem, 60vh);
+    overflow: auto;
+    padding: 0.5rem;
+  }
+
+  .command-list button {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    border: 0;
+    border-radius: 0.625rem;
+    background: transparent;
+    padding: 0.8rem 0.9rem;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .command-list button:hover,
+  .command-list button:focus-visible {
+    background: var(--accent-soft);
+  }
+
+  .command-list em {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-style: normal;
+  }
+
+  .command-list p {
+    padding: 2rem 1rem;
+    color: var(--muted);
+    text-align: center;
+    font-size: 0.85rem;
+  }
+
+  .popover-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    border: 0;
+    background: transparent;
+  }
+
+  .notification-center {
+    position: fixed;
+    top: 4.25rem;
+    right: 1.25rem;
+    z-index: 40;
+    width: min(23rem, calc(100vw - 2rem));
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    background: var(--surface);
+    padding: 1rem;
+    box-shadow: 0 24px 70px rgb(32 35 31 / 22%);
+    animation: dialog-content-in 160ms ease;
+  }
+
+  .notification-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .notification-head h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 500;
+  }
+
+  .notification-list {
+    margin: 0.75rem 0 1rem;
+    border-block: 1px solid var(--line);
+  }
+
+  .notification-list > div,
+  .notification-list > button {
+    display: flex;
+    width: 100%;
+    gap: 0.75rem;
+    align-items: flex-start;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: transparent;
+    padding: 0.9rem 0.25rem;
+    text-align: left;
+  }
+
+  .notification-list > button {
+    cursor: pointer;
+  }
+
+  .notification-list > button:hover {
+    color: var(--accent);
+  }
+
+  .notification-list > :last-child {
+    border-bottom: 0;
+  }
+
+  .notification-list svg {
+    margin-top: 0.1rem;
+    flex: none;
+    color: var(--accent);
+  }
+
+  .notification-list span {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .notification-list strong {
+    font-size: 0.8rem;
+  }
+
+  .notification-list small,
+  .notification-list p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.7rem;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 640px) {
+    .notification-center {
+      top: 4rem;
+      right: 0.75rem;
+      width: calc(100vw - 1.5rem);
+    }
+  }
+
+  .calendar-agenda {
+    border-block: 1px solid var(--line);
+  }
+
+  .calendar-agenda > button,
+  .calendar-agenda > div:not(.calendar-empty) {
+    display: grid;
+    grid-template-columns: 4rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: transparent;
+    padding: 1rem 0.5rem;
+    text-align: left;
+  }
+
+  .calendar-agenda > button {
+    cursor: pointer;
+  }
+
+  .calendar-agenda > button:hover {
+    background: color-mix(in srgb, var(--accent-soft) 55%, transparent);
+  }
+
+  .calendar-agenda > :last-child {
+    border-bottom: 0;
+  }
+
+  .calendar-agenda time {
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .calendar-agenda span {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .calendar-agenda strong {
+    overflow: hidden;
+    font-size: 0.85rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .calendar-agenda small {
+    color: var(--muted);
+    font-size: 0.7rem;
+  }
+
+  .calendar-agenda > button.done strong {
+    color: var(--muted);
+    text-decoration: line-through;
+  }
+
+  .calendar-empty {
+    display: grid;
+    min-height: 14rem;
+    place-items: center;
+    align-content: center;
+    gap: 0.5rem;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .calendar-empty strong {
+    color: var(--ink);
+  }
+
+  .calendar-month {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+  }
+
+  .calendar-month-weekday {
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 0.65rem;
+    color: var(--muted);
+    font-size: 0.65rem;
+    text-align: center;
+  }
+
+  .calendar-month button {
+    position: relative;
+    min-height: 6.25rem;
+    border: 0;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: transparent;
+    padding: 0.65rem;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .calendar-month button:hover {
+    background: var(--accent-soft);
+  }
+
+  .calendar-month button.outside {
+    color: color-mix(in srgb, var(--muted) 55%, transparent);
+  }
+
+  .calendar-month button.today span {
+    display: grid;
+    width: 1.7rem;
+    height: 1.7rem;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+  }
+
+  .calendar-month button em {
+    position: absolute;
+    right: 0.55rem;
+    bottom: 0.55rem;
+    display: grid;
+    min-width: 1.35rem;
+    height: 1.35rem;
+    place-items: center;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.65rem;
+    font-style: normal;
+  }
+
+  @media (max-width: 640px) {
+    .calendar-month button {
+      min-height: 4rem;
+      padding: 0.4rem;
+    }
+
+    .calendar-agenda > button,
+    .calendar-agenda > div:not(.calendar-empty) {
+      grid-template-columns: 3.25rem minmax(0, 1fr);
+    }
+
+    .calendar-agenda .priority,
+    .calendar-agenda > div > svg {
+      display: none;
+    }
+  }
+}

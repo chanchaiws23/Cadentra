@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Habit, Task } from '@cadentra/domain'
 import { LocaleProvider } from '../../i18n/LocaleProvider'
 import { TodayView } from './TodayView'
@@ -16,6 +16,8 @@ const habit: Habit = {
   target: 20, unit: 'นาที', type: 'duration', recurrenceRule: 'FREQ=DAILY', freezeBalance: 1, streak: 3, completedDates: [], checkIns: [],
 }
 
+afterEach(cleanup)
+
 describe('TodayView', () => {
   it('renders the daily plan from supplied tasks and habits', () => {
     render(
@@ -30,6 +32,8 @@ describe('TodayView', () => {
           onTask={vi.fn()}
           onHabit={vi.fn()}
           onCoach={vi.fn()}
+          onOpenCalendar={vi.fn()}
+          onStartFocus={vi.fn()}
         />
       </LocaleProvider>,
     )
@@ -37,5 +41,20 @@ describe('TodayView', () => {
     expect(screen.getByRole('heading', { name: 'ตารางวันนี้' })).toBeTruthy()
     expect(screen.getAllByText('Deep work')).toHaveLength(2)
     expect(screen.getAllByText('0/1')).toHaveLength(2)
+  })
+
+  it('opens the calendar and focus workspace from daily shortcuts', () => {
+    const onOpenCalendar = vi.fn()
+    const onStartFocus = vi.fn()
+    render(
+      <LocaleProvider>
+        <TodayView tasks={[task]} habits={[]} rate={0} completedHabits={0} focusMinutes={0} displayName="chai" onTask={vi.fn()} onHabit={vi.fn()} onCoach={vi.fn()} onOpenCalendar={onOpenCalendar} onStartFocus={onStartFocus}/>
+      </LocaleProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /จัดตาราง/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'เริ่มโฟกัส' }))
+    expect(onOpenCalendar).toHaveBeenCalledOnce()
+    expect(onStartFocus).toHaveBeenCalledWith(task)
   })
 })

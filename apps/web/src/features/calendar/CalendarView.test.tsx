@@ -61,4 +61,15 @@ describe('CalendarView', () => {
     render(<LocaleProvider><CalendarView tasks={[]} externalEvents={[{ id: 'google-1', connectionId: 'connection-1', title: 'Google meeting', start: task.start, end: task.end, allDay: false, readOnly: true }]} onTask={vi.fn()} onReschedule={vi.fn()}/></LocaleProvider>)
     expect(screen.getByTitle('นำเข้าจาก Google Calendar · อ่านอย่างเดียว').textContent).toContain('Google meeting')
   })
+
+  it('switches between day, week, and month views', () => {
+    render(<LocaleProvider><CalendarView tasks={[task]} externalEvents={[]} onTask={vi.fn()} onReschedule={vi.fn()}/></LocaleProvider>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'เดือน' }))
+    expect(screen.getByRole('region', { name: 'ปฏิทินรายเดือน' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'วัน' }))
+    expect(screen.getByRole('region', { name: /ตารางวันที่/ })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'สัปดาห์' }))
+    expect(screen.queryByRole('region', { name: 'ปฏิทินรายเดือน' })).toBeNull()
+  })
 })

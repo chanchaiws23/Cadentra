@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Award, ChevronDown, Download, FileText, Gift, Sparkles } from 'lucide-react'
+import { Award, Download, FileText, Gift, Sparkles } from 'lucide-react'
 import { motivationProgress, type Habit, type PersonalReward, type Reflection, type ReflectionPeriod, type Task } from '@cadentra/domain'
 import type { SaveReflectionInput } from '@cadentra/data'
 import { PageHeading } from '../../components/PageHeading'
@@ -44,7 +44,7 @@ export function InsightsView({ tasks, habits, reflections, points, focusMinutes,
   }
 
   return <>
-    <PageHeading eyebrow={t('insights.eyebrow')} title={t('insights.title')} detail={t('insights.detail')} action={<button className="filter-button">สัปดาห์นี้ <ChevronDown size={14}/></button>}/>
+    <PageHeading eyebrow={t('insights.eyebrow')} title={t('insights.title')} detail={t('insights.detail')} action={<span className="text-xs font-semibold text-accent">ข้อมูลล่าสุด</span>}/>
     <div className="insight-strip"><div><small>ความสม่ำเสมอวันนี้</small><strong>{consistency}%</strong><em>{completedToday}/{habits.length} นิสัย</em></div><div><small>เวลาโฟกัสวันนี้</small><strong>{formatMinutes(focusMinutes)}</strong><em>จาก Focus sessions</em></div><div><small>งานสำเร็จ</small><strong>{completedTasks}</strong><em>จาก {tasks.length} งาน</em></div><div><small>คะแนนสะสม</small><strong>{points}</strong><em>จากกิจกรรมที่บันทึก</em></div></div>
     <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,.75fr)]">
       <form className="border-t border-line pt-6" onSubmit={save}>
