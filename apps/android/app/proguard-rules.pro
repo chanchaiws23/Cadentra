@@ -18,4 +18,6 @@
 
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
-#-renamesourcefileattribute SourceFile
+-keepattributes RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations,AnnotationDefault
+-keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+-keep class com.cadentra.app.HealthConnectPlugin { *; }

@@ -1,0 +1,54 @@
+name: Android release candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-bundle:
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npm run android:sync
+      - name: Restore upload keystore
+        shell: bash
+        env:
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$UPLOAD_KEYSTORE_BASE64"
+          echo "$UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/cadentra-upload.jks"
+      - name: Build signed Android App Bundle
+        env:
+          CADENTRA_UPLOAD_STORE_FILE: ${{ runner.temp }}/cadentra-upload.jks
+          CADENTRA_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          CADENTRA_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          CADENTRA_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          test -n "$CADENTRA_UPLOAD_STORE_PASSWORD"
+          test -n "$CADENTRA_UPLOAD_KEY_ALIAS"
+          test -n "$CADENTRA_UPLOAD_KEY_PASSWORD"
+          chmod +x apps/android/gradlew
+          apps/android/gradlew -p apps/android bundleRelease
+          jarsigner -verify apps/android/app/build/outputs/bundle/release/app-release.aab | grep -q "jar verified"
+          sha256sum apps/android/app/build/outputs/bundle/release/app-release.aab
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cadentra-android-v1.0.0-aab
+          path: apps/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 14
