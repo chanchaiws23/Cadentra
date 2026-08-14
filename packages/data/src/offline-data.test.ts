@@ -25,6 +25,7 @@ const snapshot: UserDataSnapshot = {
   focusMinutes: 0,
   focusSessions: [],
   notificationRule: null,
+  reflections: [],
 }
 
 function remoteGateway(): UserDataGateway {
@@ -32,6 +33,7 @@ function remoteGateway(): UserDataGateway {
     load: vi.fn(async () => ({ ok: true as const, value: snapshot })),
     saveProfile: vi.fn(async () => ({ ok: true as const, value: undefined })),
     saveNotificationRule: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    saveReflection: vi.fn(async () => ({ ok: true as const, value: undefined })),
     exportAccount: vi.fn(async (userId) => ({ ok: true as const, value: { exportedAt: '', userId, data: {} } })),
     deleteAccount: vi.fn(async () => ({ ok: true as const, value: undefined })),
     createTask: vi.fn(async (_userId, input) => ({ ok: true as const, value: input.entityId! })),
