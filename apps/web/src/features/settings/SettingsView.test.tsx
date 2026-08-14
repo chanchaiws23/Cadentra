@@ -9,7 +9,7 @@ const profile: UserProfile = {
   id: 'user-1', displayName: 'Chai', timezone: 'Asia/Bangkok', locale: 'th',
   gamificationEnabled: true, healthAiConsent: false,
 }
-const notificationProps = { notificationRule: null, notificationPermission: 'default' as const, onSaveNotificationRule: vi.fn().mockResolvedValue(true), onRequestNotificationPermission: vi.fn().mockResolvedValue(undefined) }
+const notificationProps = { notificationRule: null, notificationPermission: 'default' as const, onSaveNotificationRule: vi.fn().mockResolvedValue(true), onRequestNotificationPermission: vi.fn().mockResolvedValue(undefined), calendarConnection: null, onConnectGoogleCalendar: vi.fn().mockResolvedValue(undefined), onSyncGoogleCalendar: vi.fn().mockResolvedValue(undefined), onDisconnectGoogleCalendar: vi.fn().mockResolvedValue(undefined) }
 
 describe('SettingsView', () => {
   afterEach(cleanup)
@@ -51,5 +51,12 @@ describe('SettingsView', () => {
     expect(onRequestNotificationPermission).toHaveBeenCalledOnce()
     fireEvent.click(screen.getByRole('button', { name: 'บันทึกการตั้งค่า' }))
     await waitFor(() => expect(onSaveNotificationRule).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, dailyLimit: 4 })))
+  })
+
+  it('starts Google Calendar connection explicitly', async () => {
+    const onConnectGoogleCalendar = vi.fn().mockResolvedValue(undefined)
+    render(<SettingsView {...notificationProps} onConnectGoogleCalendar={onConnectGoogleCalendar} profile={profile} email="chai@example.com" onSave={vi.fn().mockResolvedValue(true)} onExport={vi.fn()} onDelete={vi.fn()}/>)
+    fireEvent.click(screen.getByRole('button', { name: 'เชื่อมต่อ Google Calendar' }))
+    await waitFor(() => expect(onConnectGoogleCalendar).toHaveBeenCalledOnce())
   })
 })

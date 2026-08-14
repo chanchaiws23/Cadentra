@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import * as AlertDialog from '@radix-ui/react-alert-dialog'
 import { AlertTriangle, CalendarRange, Check, ChevronLeft, ChevronRight, Clock3, GripVertical, Minus, Plus } from 'lucide-react'
-import { conflictingTaskIds, findScheduleConflicts, type Task } from '@cadentra/domain'
+import { conflictingTaskIds, findScheduleConflicts, type ExternalCalendarEvent, type Task } from '@cadentra/domain'
 import { PageHeading } from '../../components/PageHeading'
 import { useI18n } from '../../i18n/LocaleProvider'
 import { formatTime, localDateKey } from '../../lib/date'
 
 interface CalendarViewProps {
   tasks: Task[]
+  externalEvents: ExternalCalendarEvent[]
   onTask: (task: Task) => void
   onReschedule: (task: Task, start: string, end: string) => void | Promise<void>
 }
@@ -75,11 +76,12 @@ function SchedulePreview({ proposal, onCancel, onConfirm }: { proposal: Schedule
   )
 }
 
-export function CalendarView({ tasks, onTask, onReschedule }: CalendarViewProps) {
+export function CalendarView({ tasks, externalEvents, onTask, onReschedule }: CalendarViewProps) {
   const { t } = useI18n()
   const weekDays = currentWorkWeek()
   const today = localDateKey(new Date())
   const visibleTasks = tasks.filter((task) => weekDays.some((day) => day.key === localDateKey(task.start)))
+  const visibleExternalEvents = externalEvents.filter((event) => weekDays.some((day) => day.key === localDateKey(event.start)))
   const conflictIds = conflictingTaskIds(visibleTasks)
   const [selectedId, setSelectedId] = useState<string>()
   const [proposal, setProposal] = useState<ScheduleProposal>()
@@ -133,7 +135,7 @@ export function CalendarView({ tasks, onTask, onReschedule }: CalendarViewProps)
         </section>
       )}
 
-      {!visibleTasks.length && <p className="mb-4 text-sm text-muted">ยังไม่มีงานที่กำหนดเวลาในสัปดาห์นี้</p>}
+      {!visibleTasks.length && !visibleExternalEvents.length && <p className="mb-4 text-sm text-muted">ยังไม่มีงานหรือนัดหมายในสัปดาห์นี้</p>}
       <div className="calendar-board">
         <div className="calendar-corner">{Intl.DateTimeFormat().resolvedOptions().timeZone}</div>
         {weekDays.map(({ date, key }) => <div className={key === today ? 'calendar-day active' : 'calendar-day'} key={key}>{new Intl.DateTimeFormat('th-TH', { weekday: 'short' }).format(date)}<strong>{date.getDate()}</strong></div>)}
@@ -154,6 +156,12 @@ export function CalendarView({ tasks, onTask, onReschedule }: CalendarViewProps)
               <span className="flex items-center gap-1">{!task.recurrenceRule && <GripVertical size={10}/>} {conflictIds.has(task.id) && <AlertTriangle size={10} aria-label="เวลาชน"/>}{task.title}</span><small>{formatTime(task.start)}</small>
             </button>
           )
+        })}
+        {visibleExternalEvents.map((event) => {
+          const start = new Date(event.start)
+          const dayIndex = weekDays.findIndex((day) => day.key === localDateKey(event.start))
+          const duration = event.allDay ? 1 : (new Date(event.end).getTime() - start.getTime()) / 3_600_000
+          return <div key={event.id} className="calendar-block border-l-[#6b7280]! bg-[#ececea]! text-[#4d534e]!" title="นำเข้าจาก Google Calendar · อ่านอย่างเดียว" style={{ gridColumn: dayIndex + 2, gridRow: `${event.allDay ? 3 : Math.max(3, start.getHours() - 8 + 3)} / span ${Math.max(1, Math.round(duration))}` }}><span className="flex items-center gap-1"><CalendarRange size={10}/>{event.title}</span><small>{event.allDay ? 'ทั้งวัน · Google' : `${formatTime(event.start)} · Google`}</small></div>
         })}
       </div>
 

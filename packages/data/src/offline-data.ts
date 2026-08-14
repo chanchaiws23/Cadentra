@@ -58,7 +58,7 @@ function readJson<T>(storage: StorageAdapter, key: string, fallback: T): T {
 }
 
 function defaultCache(): CachedUserData {
-  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0, focusSessions: [], notificationRule: null, reflections: [] }, deletedTasks: [], deletedGoals: [], deletedMilestones: [] }
+  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0, focusSessions: [], notificationRule: null, reflections: [], calendarConnection: null, externalCalendarEvents: [] }, deletedTasks: [], deletedGoals: [], deletedMilestones: [] }
 }
 
 export function createOfflineUserDataGateway(
@@ -78,6 +78,8 @@ export function createOfflineUserDataGateway(
     cache.snapshot.focusSessions ??= []
     cache.snapshot.notificationRule ??= null
     cache.snapshot.reflections ??= []
+    cache.snapshot.calendarConnection ??= null
+    cache.snapshot.externalCalendarEvents ??= []
     cache.snapshot.habits = cache.snapshot.habits.map((habit) => ({
       ...habit,
       type: habit.type ?? 'boolean',
@@ -328,6 +330,9 @@ export function createOfflineUserDataGateway(
     saveProfile: (userId, input) => mutate(userId, { id: createId(), type: 'profile.save', input }),
     saveNotificationRule: (userId, input) => mutate(userId, { id: createId(), type: 'notification.save', input }),
     saveReflection: (userId, input) => mutate(userId, { id: createId(), type: 'reflection.save', input }),
+    startGoogleCalendar: (userId) => remote.startGoogleCalendar(userId),
+    syncGoogleCalendar: (userId) => remote.syncGoogleCalendar(userId),
+    disconnectGoogleCalendar: (userId) => remote.disconnectGoogleCalendar(userId),
     exportAccount: (userId) => remote.exportAccount(userId),
     async deleteAccount() {
       const result = await remote.deleteAccount()
