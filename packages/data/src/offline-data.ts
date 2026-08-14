@@ -319,7 +319,9 @@ export function createOfflineUserDataGateway(
         const result = await remote.load(userId, focusSince, localDate)
         if (result.ok) {
           writeCache(userId, { snapshot: result.value, deletedTasks: [], deletedGoals: [], deletedMilestones: [] })
-          return result
+          const pending = readQueue(userId)
+          for (const mutation of pending) applyOptimistic(userId, mutation)
+          return pending.length ? { ok: true, value: readCache(userId).snapshot } : result
         }
         const cached = storage.getItem(cacheKey(userId))
         if (cached) return { ok: true, value: readCache(userId).snapshot }

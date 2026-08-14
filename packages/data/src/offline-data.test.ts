@@ -277,6 +277,23 @@ describe('offline user data gateway', () => {
     expect(remote.setTaskOccurrenceStatus).toHaveBeenCalledWith('user-1', 'task-1', '2026-08-10', 'done')
   })
 
+  it('keeps pending recurring status over a stale cloud reload', async () => {
+    const remote = remoteGateway()
+    vi.mocked(remote.setTaskOccurrenceStatus).mockResolvedValue({
+      ok: false,
+      error: { code: 'unavailable', message: 'Temporary database failure', recoverable: true },
+    })
+    const gateway = createOfflineUserDataGateway(remote, new MemoryStorage(), { isOnline: () => true, createId: () => 'pending-occurrence' })
+    await gateway.load('user-1', '', '2026-08-10')
+
+    const saved = await gateway.setTaskOccurrenceStatus('user-1', 'task-1', '2026-08-10', 'done')
+    const reloaded = await gateway.load('user-1', '', '2026-08-10')
+
+    expect(saved.ok).toBe(true)
+    expect(gateway.pendingCount?.('user-1')).toBe(1)
+    expect(reloaded.ok && reloaded.value.taskOccurrences).toEqual([{ taskId: 'task-1', localDate: '2026-08-10', status: 'done' }])
+  })
+
   it('reschedules a task optimistically and replays its expected version', async () => {
     let online = true
     const remote = remoteGateway()
