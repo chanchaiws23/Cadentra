@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { CalendarConnection, ExternalCalendarEvent, FocusInterruption, FocusSession, Goal, Habit, HabitType, ItemStatus, Milestone, NotificationRule, PersonalReward, Priority, Reflection, ReflectionPeriod, Task, TaskOccurrence, UserProfile } from '@cadentra/domain'
+import type { AIProposal, CalendarConnection, DailyHealthAggregate, ExternalCalendarEvent, FocusInterruption, FocusSession, Goal, Habit, HabitType, ItemStatus, Milestone, NotificationRule, PersonalReward, Priority, Reflection, ReflectionPeriod, Task, TaskOccurrence, UserProfile } from '@cadentra/domain'
 import { dataError, type DataResult } from './repository'
 
 export interface UserDataSnapshot {
@@ -17,6 +17,8 @@ export interface UserDataSnapshot {
   calendarConnection: CalendarConnection | null
   externalCalendarEvents: ExternalCalendarEvent[]
   rewards: PersonalReward[]
+  aiProposals: AIProposal[]
+  healthAggregates: DailyHealthAggregate[]
 }
 
 export interface CreateTaskInput {
@@ -102,6 +104,11 @@ export interface UserDataGateway {
   redeemReward(userId: string, rewardId: string): Promise<DataResult<void>>
   registerDevice(userId: string, input: RegisterDeviceInput): Promise<DataResult<void>>
   sendTestNotification(userId: string): Promise<DataResult<void>>
+  requestAIProposal(userId: string, instruction: string, includeHealth: boolean): Promise<DataResult<void>>
+  applyAIProposal(userId: string, proposalId: string, changeIds: string[]): Promise<DataResult<void>>
+  rejectAIProposal(userId: string, proposalId: string): Promise<DataResult<void>>
+  undoAIProposal(userId: string, proposalId: string): Promise<DataResult<void>>
+  saveHealthAggregate(userId: string, input: Omit<DailyHealthAggregate, 'id' | 'source'>): Promise<DataResult<void>>
   exportAccount(userId: string): Promise<DataResult<AccountExport>>
   deleteAccount(): Promise<DataResult<void>>
   createTask(userId: string, input: CreateTaskInput): Promise<DataResult<string>>
@@ -256,6 +263,9 @@ interface PersonalRewardRow {
   created_at: string
 }
 
+interface AIProposalRow { id: string; status: AIProposal['status']; reason: string; changes: AIProposal['changes']; created_at: string }
+interface DailyHealthAggregateRow { id: string; local_date: string; steps: number | null; sleep_minutes: number | null; exercise_minutes: number | null; source: 'health_connect' }
+
 export function mapProfileRow(row: ProfileRow | null): UserProfile | null {
   return row ? {
     id: row.id,
@@ -337,6 +347,9 @@ export function mapExternalCalendarEventRow(row: ExternalCalendarEventRow): Exte
 export function mapPersonalRewardRow(row: PersonalRewardRow): PersonalReward {
   return { id: row.id, userId: row.user_id, title: row.title, pointCost: row.point_cost, redeemedAt: row.redeemed_at ?? undefined, createdAt: row.created_at }
 }
+
+export function mapAIProposalRow(row: AIProposalRow): AIProposal { return { id: row.id, status: row.status, reason: row.reason, changes: row.changes, createdAt: row.created_at } }
+export function mapDailyHealthAggregateRow(row: DailyHealthAggregateRow): DailyHealthAggregate { return { id: row.id, localDate: row.local_date, steps: row.steps ?? undefined, sleepMinutes: row.sleep_minutes ?? undefined, exerciseMinutes: row.exercise_minutes ?? undefined, source: row.source } }
 
 function dateBefore(localDate: string, days: number): string {
   const date = new Date(`${localDate}T12:00:00Z`)
@@ -425,7 +438,7 @@ function idempotentCreate(error: { message: string; code?: string } | null, enti
 export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataGateway {
   return {
     async load(userId, focusSince, localDate) {
-      const [profile, tasks, taskOccurrences, goals, milestones, habits, checkIns, points, focusSessions, notificationRule, reflections, calendarConnection, externalCalendarEvents, rewards] = await Promise.all([
+      const [profile, tasks, taskOccurrences, goals, milestones, habits, checkIns, points, focusSessions, notificationRule, reflections, calendarConnection, externalCalendarEvents, rewards, aiProposals, healthAggregates] = await Promise.all([
         client.from('profiles').select('id,display_name,timezone,locale,gamification_enabled,health_ai_consent').eq('id', userId).maybeSingle(),
         client.from('tasks').select('id,user_id,title,starts_at,ends_at,category,priority,status,goal_id,recurrence_rule,updated_at').eq('user_id', userId).is('deleted_at', null).order('starts_at'),
         client.from('task_occurrences').select('task_id,local_date,status').eq('user_id', userId),
@@ -440,8 +453,10 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         client.from('calendar_connections').select('id,provider,provider_account_id,sync_status,last_synced_at').eq('user_id', userId).eq('provider', 'google').maybeSingle(),
         client.from('external_calendar_events').select('id,connection_id,title,starts_at,ends_at,all_day').eq('user_id', userId).is('deleted_at', null).gte('ends_at', focusSince).order('starts_at').limit(250),
         client.from('personal_rewards').select('id,user_id,title,point_cost,redeemed_at,created_at').eq('user_id', userId).is('deleted_at', null).order('created_at', { ascending: false }),
+        client.from('ai_proposals').select('id,status,reason,changes,created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(10),
+        client.from('daily_health_aggregates').select('id,local_date,steps,sleep_minutes,exercise_minutes,source').eq('user_id', userId).order('local_date', { ascending: false }).limit(30),
       ])
-      const error = profile.error ?? tasks.error ?? taskOccurrences.error ?? goals.error ?? milestones.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error ?? notificationRule.error ?? reflections.error ?? calendarConnection.error ?? externalCalendarEvents.error ?? rewards.error
+      const error = profile.error ?? tasks.error ?? taskOccurrences.error ?? goals.error ?? milestones.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error ?? notificationRule.error ?? reflections.error ?? calendarConnection.error ?? externalCalendarEvents.error ?? rewards.error ?? aiProposals.error ?? healthAggregates.error
       if (error) return failure(error)
       return {
         ok: true,
@@ -460,6 +475,8 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
           calendarConnection: mapCalendarConnectionRow(calendarConnection.data as CalendarConnectionRow | null),
           externalCalendarEvents: (externalCalendarEvents.data as ExternalCalendarEventRow[]).map(mapExternalCalendarEventRow),
           rewards: (rewards.data as PersonalRewardRow[]).map(mapPersonalRewardRow),
+          aiProposals: (aiProposals.data as AIProposalRow[]).map(mapAIProposalRow),
+          healthAggregates: (healthAggregates.data as DailyHealthAggregateRow[]).map(mapDailyHealthAggregateRow),
         },
       }
     },
@@ -524,6 +541,31 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
 
     async sendTestNotification(_userId) {
       const { error } = await client.functions.invoke('send-notification', { body: { kind: 'test', title: 'Cadentra พร้อมแล้ว', body: 'การแจ้งเตือนบนอุปกรณ์นี้ทำงานตามปกติ' } })
+      return error ? failure(error) : ok()
+    },
+
+    async requestAIProposal(_userId, instruction, includeHealth) {
+      const { error } = await client.functions.invoke('ai-proposal', { body: { instruction, includeHealth } })
+      return error ? failure(error) : ok()
+    },
+
+    async applyAIProposal(_userId, proposalId, changeIds) {
+      const { error } = await client.rpc('apply_ai_proposal', { p_proposal_id: proposalId, p_change_ids: changeIds })
+      return error ? failure(error) : ok()
+    },
+
+    async rejectAIProposal(userId, proposalId) {
+      const { error } = await client.from('ai_proposals').update({ status: 'rejected' }).eq('id', proposalId).eq('user_id', userId).eq('status', 'draft')
+      return error ? failure(error) : ok()
+    },
+
+    async undoAIProposal(_userId, proposalId) {
+      const { error } = await client.rpc('undo_ai_proposal', { p_proposal_id: proposalId })
+      return error ? failure(error) : ok()
+    },
+
+    async saveHealthAggregate(userId, input) {
+      const { error } = await client.from('daily_health_aggregates').upsert({ user_id: userId, local_date: input.localDate, steps: input.steps ?? null, sleep_minutes: input.sleepMinutes ?? null, exercise_minutes: input.exerciseMinutes ?? null, source: 'health_connect' }, { onConflict: 'user_id,local_date,source' })
       return error ? failure(error) : ok()
     },
 

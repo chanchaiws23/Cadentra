@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildHabits, calculateCurrentStreak, isHabitScheduled, mapCalendarConnectionRow, mapExternalCalendarEventRow, mapFocusSessionRow, mapGoalRow, mapMilestoneRow, mapNotificationRuleRow, mapPersonalRewardRow, mapProfileRow, mapReflectionRow, mapTaskRow } from './cloud-data'
+import { buildHabits, calculateCurrentStreak, isHabitScheduled, mapAIProposalRow, mapCalendarConnectionRow, mapDailyHealthAggregateRow, mapExternalCalendarEventRow, mapFocusSessionRow, mapGoalRow, mapMilestoneRow, mapNotificationRuleRow, mapPersonalRewardRow, mapProfileRow, mapReflectionRow, mapTaskRow } from './cloud-data'
 
 describe('cloud data mapping', () => {
   it('maps user profile preferences without exposing database column names', () => {
@@ -82,5 +82,10 @@ describe('cloud data mapping', () => {
 
   it('maps personal rewards without database column names', () => {
     expect(mapPersonalRewardRow({ id: 'reward-1', user_id: 'user-1', title: 'Play games', point_cost: 100, redeemed_at: null, created_at: '2026-08-14T00:00:00Z' })).toMatchObject({ title: 'Play games', pointCost: 100, redeemedAt: undefined })
+  })
+
+  it('maps AI proposals and daily-only health aggregates', () => {
+    expect(mapAIProposalRow({ id: 'p', status: 'draft', reason: 'Balance workload', changes: [], created_at: '2026-08-14T00:00:00Z' })).toMatchObject({ status: 'draft', reason: 'Balance workload' })
+    expect(mapDailyHealthAggregateRow({ id: 'h', local_date: '2026-08-14', steps: 5000, sleep_minutes: null, exercise_minutes: 30, source: 'health_connect' })).toEqual({ id: 'h', localDate: '2026-08-14', steps: 5000, sleepMinutes: undefined, exerciseMinutes: 30, source: 'health_connect' })
   })
 })

@@ -29,6 +29,8 @@ const snapshot: UserDataSnapshot = {
   calendarConnection: null,
   externalCalendarEvents: [],
   rewards: [],
+  aiProposals: [],
+  healthAggregates: [],
 }
 
 function remoteGateway(): UserDataGateway {
@@ -44,6 +46,11 @@ function remoteGateway(): UserDataGateway {
     redeemReward: vi.fn(async () => ({ ok: true as const, value: undefined })),
     registerDevice: vi.fn(async () => ({ ok: true as const, value: undefined })),
     sendTestNotification: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    requestAIProposal: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    applyAIProposal: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    rejectAIProposal: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    undoAIProposal: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    saveHealthAggregate: vi.fn(async () => ({ ok: true as const, value: undefined })),
     exportAccount: vi.fn(async (userId) => ({ ok: true as const, value: { exportedAt: '', userId, data: {} } })),
     deleteAccount: vi.fn(async () => ({ ok: true as const, value: undefined })),
     createTask: vi.fn(async (_userId, input) => ({ ok: true as const, value: input.entityId! })),

@@ -8,7 +8,7 @@ import {
   Target, Trophy, X,
   Undo2,
 } from 'lucide-react'
-import { collapseRecurringTasks, completionRate, findScheduleConflicts, pointsForCompletion, type Goal, type Habit, type HabitType, type Milestone, type PersonalReward, type Task } from '@cadentra/domain'
+import { collapseRecurringTasks, completionRate, findScheduleConflicts, pointsForCompletion, type AIProposal, type Goal, type Habit, type HabitType, type Milestone, type PersonalReward, type Task } from '@cadentra/domain'
 import type { RecordFocusSessionInput, SaveReflectionInput, SyncIssue, UpdateProfileInput, UserDataGateway } from '@cadentra/data'
 import { AppToaster } from './components/AppToaster'
 import { useAuth } from './auth/AuthContext'
@@ -20,6 +20,7 @@ import { TasksView } from './features/tasks/TasksView'
 import { TodayView } from './features/today/TodayView'
 import { SettingsView } from './features/settings/SettingsView'
 import { InsightsView } from './features/insights/InsightsView'
+import { CoachDialog } from './features/coach/CoachDialog'
 import { useUserData } from './data/useUserData'
 import { useI18n } from './i18n/LocaleProvider'
 import type { MessageKey } from './i18n/messages'
@@ -31,6 +32,7 @@ import { buildActivityCsv } from './lib/activity-export'
 import { buildReviewReportHtml } from './lib/review-report'
 import { registerPushDevice } from './lib/push-registration'
 import { environment } from './config/environment'
+import { readHealthConnectDay } from './lib/health-connect'
 
 const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] = [
   { id: 'today', labelKey: 'nav.today', icon: Gauge },
@@ -49,10 +51,11 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const navigate = useNavigate()
   const view = pathToView(location.pathname)
   const { snapshot, loading, error, reload, online, pendingCount, syncIssues } = useUserData(dataGateway, session?.user.id)
-  const { profile, tasks, goals, milestones, habits, points, focusMinutes, focusSessions, notificationRule, reflections, calendarConnection, externalCalendarEvents, rewards } = snapshot
+  const { profile, tasks, goals, milestones, habits, points, focusMinutes, focusSessions, notificationRule, reflections, calendarConnection, externalCalendarEvents, rewards, aiProposals, healthAggregates } = snapshot
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [habitAddOpen, setHabitAddOpen] = useState(false)
+  const [coachOpen, setCoachOpen] = useState(false)
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission)
   const commandHistory = useCommandHistory()
   const todayTasks = tasks.filter((task) => localDateKey(task.start) === todayKey)
@@ -507,6 +510,44 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     toast.success('ยกเลิก Google Calendar แล้ว')
   }
 
+  const requestAIProposal = async (instruction: string, includeHealth: boolean) => {
+    if (!dataGateway || !session) return false
+    const result = await dataGateway.requestAIProposal(session.user.id, instruction, includeHealth)
+    if (!result.ok) { toast.error('สร้างข้อเสนอไม่สำเร็จ', { description: result.error.message }); return false }
+    await reload(); return true
+  }
+
+  const applyAIProposal = async (proposal: AIProposal, changeIds: string[]) => {
+    if (!dataGateway || !session) return false
+    const result = await dataGateway.applyAIProposal(session.user.id, proposal.id, changeIds)
+    if (!result.ok) { toast.error('ใช้ข้อเสนอไม่สำเร็จ', { description: result.error.message }); return false }
+    await reload(); toast.success('ยืนยันและบันทึกตารางใหม่แล้ว'); return true
+  }
+
+  const rejectAIProposal = async (proposal: AIProposal) => {
+    if (!dataGateway || !session) return false
+    const result = await dataGateway.rejectAIProposal(session.user.id, proposal.id)
+    if (!result.ok) { toast.error('ปฏิเสธข้อเสนอไม่สำเร็จ', { description: result.error.message }); return false }
+    await reload(); return true
+  }
+
+  const undoAIProposal = async (proposal: AIProposal) => {
+    if (!dataGateway || !session) return false
+    const result = await dataGateway.undoAIProposal(session.user.id, proposal.id)
+    if (!result.ok) { toast.error('Undo ข้อเสนอไม่สำเร็จ', { description: result.error.message }); return false }
+    await reload(); toast.success('คืนตารางก่อนใช้ข้อเสนอแล้ว'); return true
+  }
+
+  const syncHealthConnect = async () => {
+    if (!dataGateway || !session) return
+    try {
+      const aggregate = await readHealthConnectDay(todayKey, profile?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)
+      const result = await dataGateway.saveHealthAggregate(session.user.id, aggregate)
+      if (!result.ok) throw new Error(result.error.message)
+      await reload(); toast.success('ซิงก์ยอดรวม Health Connect แล้ว')
+    } catch (error) { toast.error('ซิงก์ Health Connect ไม่สำเร็จ', { description: error instanceof Error ? error.message : 'Unknown error' }) }
+  }
+
   const deleteAccount = async () => {
     if (!dataGateway) return false
     const result = await dataGateway.deleteAccount()
@@ -578,14 +619,14 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
           {syncIssues[0] && <SyncConflictBanner issue={syncIssues[0]} onResolve={resolveSyncIssue}/>}
           {loading ? <DataLoading/> : error ? <DataLoadError message={error} onRetry={() => void reload()}/> : <Routes>
             <Route path="/" element={<Navigate to={viewPaths.today} replace/>}/>
-            <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={displayName} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => toast.info('AI Coach จะเปิดใช้เมื่อ Edge Function พร้อม')} />}/>
+            <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={displayName} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => setCoachOpen(true)} />}/>
             <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} externalEvents={externalCalendarEvents} onTask={toggleTask} onReschedule={rescheduleTask}/>}/>
             <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
             <Route path={viewPaths.goals} element={<GoalsView goals={goals} milestones={milestones} tasks={managedTasks} onCreateGoal={createGoal} onToggleGoal={toggleGoal} onDeleteGoal={deleteGoal} onCreateMilestone={createMilestone} onToggleMilestone={toggleMilestone} onDeleteMilestone={deleteMilestone}/>}/>
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabitValue={setHabitValue} onFreeze={useHabitFreeze} onAdd={() => setHabitAddOpen(true)}/>}/>
             <Route path={viewPaths.focus} element={<FocusView tasks={managedTasks} sessions={focusSessions} notify={notify} onComplete={recordFocus}/>}/>
             <Route path={viewPaths.insights} element={<InsightsView tasks={managedTasks} habits={habits} reflections={reflections} rewards={rewards} points={points} focusMinutes={focusMinutes} onSaveReflection={saveReflection} onExportCsv={exportActivityCsv} onExportPdf={exportReviewPdf} onCreateReward={createReward} onRedeemReward={redeemReward}/>}/>
-            <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} notificationRule={notificationRule} notificationPermission={notificationPermission} calendarConnection={calendarConnection} onConnectGoogleCalendar={connectGoogleCalendar} onSyncGoogleCalendar={syncGoogleCalendar} onDisconnectGoogleCalendar={disconnectGoogleCalendar} onSave={saveProfile} onSaveNotificationRule={saveNotificationRule} onRequestNotificationPermission={requestNotificationPermission} onSendTestNotification={sendTestNotification} onExport={exportAccount} onDelete={deleteAccount}/>}/>
+            <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} notificationRule={notificationRule} notificationPermission={notificationPermission} healthAggregates={healthAggregates} onSyncHealthConnect={syncHealthConnect} calendarConnection={calendarConnection} onConnectGoogleCalendar={connectGoogleCalendar} onSyncGoogleCalendar={syncGoogleCalendar} onDisconnectGoogleCalendar={disconnectGoogleCalendar} onSave={saveProfile} onSaveNotificationRule={saveNotificationRule} onRequestNotificationPermission={requestNotificationPermission} onSendTestNotification={sendTestNotification} onExport={exportAccount} onDelete={deleteAccount}/>}/>
             <Route path="*" element={<Navigate to={viewPaths.today} replace/>}/>
           </Routes>}
         </section>
@@ -594,6 +635,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
       {menuOpen && <button className="scrim" onClick={() => setMenuOpen(false)} aria-label="ปิดเมนู"/>}
       {addOpen && <AddTaskModal goals={goals} tasks={tasks} onClose={() => setAddOpen(false)} onAdd={addTask}/>}
       {habitAddOpen && <AddHabitModal onClose={() => setHabitAddOpen(false)} onAdd={addHabit}/>}
+      {coachOpen && <CoachDialog tasks={managedTasks} proposals={aiProposals} healthConsent={profile?.healthAiConsent === true} onClose={() => setCoachOpen(false)} onGenerate={requestAIProposal} onApply={applyAIProposal} onReject={rejectAIProposal} onUndo={undoAIProposal}/>}
       <AppToaster/>
     </div>
   )

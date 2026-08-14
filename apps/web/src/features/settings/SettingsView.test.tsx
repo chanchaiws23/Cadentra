@@ -9,7 +9,7 @@ const profile: UserProfile = {
   id: 'user-1', displayName: 'Chai', timezone: 'Asia/Bangkok', locale: 'th',
   gamificationEnabled: true, healthAiConsent: false,
 }
-const notificationProps = { notificationRule: null, notificationPermission: 'default' as const, onSaveNotificationRule: vi.fn().mockResolvedValue(true), onRequestNotificationPermission: vi.fn().mockResolvedValue(undefined), onSendTestNotification: vi.fn().mockResolvedValue(undefined), calendarConnection: null, onConnectGoogleCalendar: vi.fn().mockResolvedValue(undefined), onSyncGoogleCalendar: vi.fn().mockResolvedValue(undefined), onDisconnectGoogleCalendar: vi.fn().mockResolvedValue(undefined) }
+const notificationProps = { notificationRule: null, notificationPermission: 'default' as const, onSaveNotificationRule: vi.fn().mockResolvedValue(true), onRequestNotificationPermission: vi.fn().mockResolvedValue(undefined), onSendTestNotification: vi.fn().mockResolvedValue(undefined), healthAggregates: [], onSyncHealthConnect: vi.fn().mockResolvedValue(undefined), calendarConnection: null, onConnectGoogleCalendar: vi.fn().mockResolvedValue(undefined), onSyncGoogleCalendar: vi.fn().mockResolvedValue(undefined), onDisconnectGoogleCalendar: vi.fn().mockResolvedValue(undefined) }
 
 describe('SettingsView', () => {
   afterEach(cleanup)

@@ -159,6 +159,15 @@ export interface AIProposal {
   createdAt: string
 }
 
+export interface DailyHealthAggregate {
+  id: string
+  localDate: string
+  steps?: number
+  sleepMinutes?: number
+  exerciseMinutes?: number
+  source: 'health_connect'
+}
+
 export function completionRate(tasks: Task[]): number {
   if (!tasks.length) return 0
   return Math.round((tasks.filter((task) => task.status === 'done').length / tasks.length) * 100)
