@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Check, ChevronDown, Circle, Flame, Play, Sparkles, Zap } from 'lucide-react'
 import type { Habit, Task } from '@cadentra/domain'
 import { PageHeading } from '../../components/PageHeading'
@@ -11,7 +12,7 @@ interface TodayViewProps {
   completedHabits: number
   focusMinutes: number
   displayName: string
-  onTask: (task: Task) => void
+  onTask: (task: Task) => boolean | Promise<boolean>
   onHabit: (habit: Habit) => void
   onCoach: () => void
   onOpenCalendar: () => void
@@ -70,20 +71,33 @@ export function TodayView({ tasks, habits, rate, completedHabits, focusMinutes, 
   )
 }
 
-function TimelineItem({ task, onToggle }: { task: Task; onToggle: () => void }) {
+function TimelineItem({ task, onToggle }: { task: Task; onToggle: () => boolean | Promise<boolean> }) {
+  const [status, setStatus] = useState(task.status)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => setStatus(task.status), [task.status])
+  const done = status === 'done'
+  const toggle = async () => {
+    if (busy) return
+    const previous = status
+    setStatus(done ? 'planned' : 'done')
+    setBusy(true)
+    const saved = await onToggle()
+    if (!saved) setStatus(previous)
+    setBusy(false)
+  }
   return (
-    <div className={`timeline-item ${task.status}`}>
+    <div className={`timeline-item ${status}`}>
       <time>{formatTime(task.start)}</time><span className="time-dot"/>
-      <div className="timeline-content">
-        <button className="check-button" onClick={onToggle} aria-label={task.status === 'done' ? 'ยกเลิกสำเร็จ' : 'ทำสำเร็จ'}>
-          {task.status === 'done' ? <Check size={15}/> : <Circle size={15}/>}
-        </button>
+      <button type="button" className="timeline-content timeline-action" onClick={() => void toggle()} disabled={busy} aria-pressed={done} aria-label={`${done ? 'ยกเลิกสำเร็จ' : 'ทำสำเร็จ'} ${task.title}`}>
+        <span className="check-button" aria-hidden="true">
+          {done ? <Check size={15}/> : <Circle size={15}/>}
+        </span>
         <div>
           <strong>{task.title}</strong>
-          <small>{formatTime(task.start)}–{formatTime(task.end)} · {task.category}{task.recurring ? ' · ทำซ้ำ' : ''}</small>
+          <small>{busy ? 'กำลังบันทึก…' : <>{formatTime(task.start)}–{formatTime(task.end)} · {task.category}{task.recurring ? ' · ทำซ้ำ' : ''}</>}</small>
         </div>
         <span className={`priority ${task.priority}`}>{task.priority === 'high' ? 'สำคัญ' : task.priority === 'medium' ? 'ปกติ' : 'ยืดหยุ่น'}</span>
-      </div>
+      </button>
     </div>
   )
 }

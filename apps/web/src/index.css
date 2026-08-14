@@ -249,6 +249,37 @@
     border-block: 1px solid var(--line);
   }
 
+  .timeline-action {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .timeline-action .check-button {
+    width: 2rem;
+    height: 2rem;
+    flex: none;
+    border: 1px solid #b9bcb3;
+    border-radius: 50%;
+  }
+
+  .timeline-item.done .timeline-action .check-button {
+    border-color: var(--accent);
+  }
+
+  .timeline-action:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--accent) 27%, transparent);
+    outline-offset: 2px;
+  }
+
+  .timeline-action:disabled {
+    cursor: wait;
+    opacity: 0.72;
+  }
+
   .calendar-agenda > button,
   .calendar-agenda > div:not(.calendar-empty) {
     display: grid;

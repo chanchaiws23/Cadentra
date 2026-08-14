@@ -57,4 +57,16 @@ describe('TodayView', () => {
     expect(onOpenCalendar).toHaveBeenCalledOnce()
     expect(onStartFocus).toHaveBeenCalledWith(task)
   })
+
+  it('marks a task complete by clicking its full task row', async () => {
+    let finishSave: ((saved: boolean) => void) | undefined
+    const onTask = vi.fn(() => new Promise<boolean>((resolve) => { finishSave = resolve }))
+    render(<LocaleProvider><TodayView tasks={[task]} habits={[]} rate={0} completedHabits={0} focusMinutes={0} displayName="chai" onTask={onTask} onHabit={vi.fn()} onCoach={vi.fn()} onOpenCalendar={vi.fn()} onStartFocus={vi.fn()}/></LocaleProvider>)
+
+    const taskRow = screen.getByRole('button', { name: 'ทำสำเร็จ Deep work' })
+    fireEvent.click(taskRow)
+    expect(onTask).toHaveBeenCalledWith(task)
+    expect(screen.getByText('กำลังบันทึก…')).toBeTruthy()
+    finishSave?.(true)
+  })
 })

@@ -145,7 +145,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     const nextStatus: Task['status'] = completing ? 'done' : 'planned'
     const pointsAmount = completing ? pointsForCompletion(task.priority) : -pointsForCompletion(task.priority)
     const changed = await applyTaskStatus(task, nextStatus, pointsAmount, completing ? 'task_completed' : 'task_reopened', task.updatedAt)
-    if (!changed) return
+    if (!changed) return false
     commandHistory.push({
       label: completing ? `ทำ “${task.title}” สำเร็จ` : `เปิด “${task.title}” อีกครั้ง`,
       undo: () => applyTaskStatus(task, task.status, -pointsAmount, 'task_status_undone'),
@@ -153,6 +153,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     })
     if (completing) notify(`ทำสำเร็จ · +${pointsForCompletion(task.priority)} คะแนน`)
     else toast.info('ย้ายกลับไปยังแผนแล้ว')
+    return true
   }
 
   const applyTaskSchedule = async (taskId: string, start: string, end: string, expectedUpdatedAt?: string) => {
