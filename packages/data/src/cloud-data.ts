@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { FocusInterruption, FocusSession, Goal, Habit, HabitType, ItemStatus, Milestone, Priority, Task, TaskOccurrence, UserProfile } from '@cadentra/domain'
+import type { FocusInterruption, FocusSession, Goal, Habit, HabitType, ItemStatus, Milestone, NotificationRule, Priority, Task, TaskOccurrence, UserProfile } from '@cadentra/domain'
 import { dataError, type DataResult } from './repository'
 
 export interface UserDataSnapshot {
@@ -12,6 +12,7 @@ export interface UserDataSnapshot {
   points: number
   focusMinutes: number
   focusSessions: FocusSession[]
+  notificationRule: NotificationRule | null
 }
 
 export interface CreateTaskInput {
@@ -74,6 +75,7 @@ export interface AccountExport {
 export interface UserDataGateway {
   load(userId: string, focusSince: string, localDate: string): Promise<DataResult<UserDataSnapshot>>
   saveProfile(userId: string, input: UpdateProfileInput): Promise<DataResult<void>>
+  saveNotificationRule(userId: string, input: Omit<NotificationRule, 'userId'>): Promise<DataResult<void>>
   exportAccount(userId: string): Promise<DataResult<AccountExport>>
   deleteAccount(): Promise<DataResult<void>>
   createTask(userId: string, input: CreateTaskInput): Promise<DataResult<string>>
@@ -184,6 +186,15 @@ interface FocusSessionRow {
   ended_at: string
 }
 
+interface NotificationRuleRow {
+  user_id: string
+  enabled: boolean
+  quiet_start: string
+  quiet_end: string
+  daily_limit: number
+  focus_break_minutes: number
+}
+
 export function mapProfileRow(row: ProfileRow | null): UserProfile | null {
   return row ? {
     id: row.id,
@@ -235,6 +246,10 @@ export function mapFocusSessionRow(row: FocusSessionRow): FocusSession {
     endedAt: row.ended_at,
     status: 'completed',
   }
+}
+
+export function mapNotificationRuleRow(row: NotificationRuleRow | null): NotificationRule | null {
+  return row ? { userId: row.user_id, enabled: row.enabled, quietStart: row.quiet_start.slice(0, 5), quietEnd: row.quiet_end.slice(0, 5), dailyLimit: row.daily_limit, focusBreakMinutes: row.focus_break_minutes } : null
 }
 
 function dateBefore(localDate: string, days: number): string {
@@ -324,7 +339,7 @@ function idempotentCreate(error: { message: string; code?: string } | null, enti
 export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataGateway {
   return {
     async load(userId, focusSince, localDate) {
-      const [profile, tasks, taskOccurrences, goals, milestones, habits, checkIns, points, focusSessions] = await Promise.all([
+      const [profile, tasks, taskOccurrences, goals, milestones, habits, checkIns, points, focusSessions, notificationRule] = await Promise.all([
         client.from('profiles').select('id,display_name,timezone,locale,gamification_enabled,health_ai_consent').eq('id', userId).maybeSingle(),
         client.from('tasks').select('id,user_id,title,starts_at,ends_at,category,priority,status,goal_id,recurrence_rule,updated_at').eq('user_id', userId).is('deleted_at', null).order('starts_at'),
         client.from('task_occurrences').select('task_id,local_date,status').eq('user_id', userId),
@@ -334,8 +349,9 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         client.from('habit_checkins').select('habit_id,local_date,value,is_freeze').eq('user_id', userId).order('local_date'),
         client.from('point_transactions').select('amount').eq('user_id', userId),
         client.from('focus_sessions').select('id,user_id,task_id,planned_minutes,elapsed_seconds,pause_seconds,interruption_count,interruptions,started_at,ended_at').eq('user_id', userId).gte('created_at', focusSince).order('started_at', { ascending: false }),
+        client.from('notification_rules').select('user_id,enabled,quiet_start,quiet_end,daily_limit,focus_break_minutes').eq('user_id', userId).maybeSingle(),
       ])
-      const error = profile.error ?? tasks.error ?? taskOccurrences.error ?? goals.error ?? milestones.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error
+      const error = profile.error ?? tasks.error ?? taskOccurrences.error ?? goals.error ?? milestones.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error ?? notificationRule.error
       if (error) return failure(error)
       return {
         ok: true,
@@ -349,6 +365,7 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
           points: (points.data as { amount: number }[]).reduce((total, entry) => total + entry.amount, 0),
           focusMinutes: Math.floor((focusSessions.data as FocusSessionRow[]).reduce((total, entry) => total + entry.elapsed_seconds, 0) / 60),
           focusSessions: (focusSessions.data as FocusSessionRow[]).map(mapFocusSessionRow),
+          notificationRule: mapNotificationRuleRow(notificationRule.data as NotificationRuleRow | null),
         },
       }
     },
@@ -363,6 +380,11 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         health_ai_consent: input.healthAiConsent,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' })
+      return error ? failure(error) : ok()
+    },
+
+    async saveNotificationRule(userId, input) {
+      const { error } = await client.from('notification_rules').upsert({ user_id: userId, enabled: input.enabled, quiet_start: input.quietStart, quiet_end: input.quietEnd, daily_limit: input.dailyLimit, focus_break_minutes: input.focusBreakMinutes, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
       return error ? failure(error) : ok()
     },
 

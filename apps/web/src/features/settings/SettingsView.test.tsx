@@ -9,13 +9,14 @@ const profile: UserProfile = {
   id: 'user-1', displayName: 'Chai', timezone: 'Asia/Bangkok', locale: 'th',
   gamificationEnabled: true, healthAiConsent: false,
 }
+const notificationProps = { notificationRule: null, notificationPermission: 'default' as const, onSaveNotificationRule: vi.fn().mockResolvedValue(true), onRequestNotificationPermission: vi.fn().mockResolvedValue(undefined) }
 
 describe('SettingsView', () => {
   afterEach(cleanup)
 
   it('edits and submits cloud profile preferences', async () => {
     const onSave = vi.fn().mockResolvedValue(true)
-    render(<SettingsView profile={profile} email="chai@example.com" onSave={onSave} onExport={vi.fn()} onDelete={vi.fn()}/>)
+    render(<SettingsView {...notificationProps} profile={profile} email="chai@example.com" onSave={onSave} onExport={vi.fn()} onDelete={vi.fn()}/>)
 
     fireEvent.change(screen.getByLabelText('ชื่อที่แสดง'), { target: { value: 'ชัย' } })
     fireEvent.click(screen.getByLabelText('เปิดคะแนนและเลเวล'))
@@ -27,7 +28,7 @@ describe('SettingsView', () => {
   it('requires the account email before permanent deletion', async () => {
     const onExport = vi.fn().mockResolvedValue(true)
     const onDelete = vi.fn().mockResolvedValue(true)
-    render(<SettingsView profile={profile} email="chai@example.com" onSave={vi.fn()} onExport={onExport} onDelete={onDelete}/>)
+    render(<SettingsView {...notificationProps} profile={profile} email="chai@example.com" onSave={vi.fn().mockResolvedValue(true)} onExport={onExport} onDelete={onDelete}/>)
 
     fireEvent.click(screen.getByRole('button', { name: 'ดาวน์โหลด JSON' }))
     await waitFor(() => expect(onExport).toHaveBeenCalledOnce())
@@ -38,5 +39,17 @@ describe('SettingsView', () => {
     expect(deleteButton).toBeEnabled()
     fireEvent.click(deleteButton)
     await waitFor(() => expect(onDelete).toHaveBeenCalledOnce())
+  })
+
+  it('saves quiet hours and requests browser permission explicitly', async () => {
+    const onSaveNotificationRule = vi.fn().mockResolvedValue(true)
+    const onRequestNotificationPermission = vi.fn().mockResolvedValue(undefined)
+    render(<SettingsView {...notificationProps} onSaveNotificationRule={onSaveNotificationRule} onRequestNotificationPermission={onRequestNotificationPermission} profile={profile} email="chai@example.com" onSave={vi.fn().mockResolvedValue(true)} onExport={vi.fn()} onDelete={vi.fn()}/>)
+    fireEvent.click(screen.getByLabelText('เปิดการแจ้งเตือนบนอุปกรณ์นี้'))
+    fireEvent.change(screen.getByLabelText('จำกัดการแจ้งเตือนต่อวัน'), { target: { value: '4' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ขอสิทธิ์จากเบราว์เซอร์' }))
+    expect(onRequestNotificationPermission).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกการตั้งค่า' }))
+    await waitFor(() => expect(onSaveNotificationRule).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, dailyLimit: 4 })))
   })
 })
