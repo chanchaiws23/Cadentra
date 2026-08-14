@@ -8,7 +8,7 @@ import {
   Target, Trophy, X,
   Undo2,
 } from 'lucide-react'
-import { collapseRecurringTasks, completionRate, findScheduleConflicts, pointsForCompletion, type Goal, type Habit, type HabitType, type Milestone, type Task } from '@cadentra/domain'
+import { collapseRecurringTasks, completionRate, findScheduleConflicts, pointsForCompletion, type Goal, type Habit, type HabitType, type Milestone, type PersonalReward, type Task } from '@cadentra/domain'
 import type { RecordFocusSessionInput, SaveReflectionInput, SyncIssue, UpdateProfileInput, UserDataGateway } from '@cadentra/data'
 import { AppToaster } from './components/AppToaster'
 import { useAuth } from './auth/AuthContext'
@@ -28,6 +28,7 @@ import { pathToView, viewPaths, type View } from './routing'
 import { useCommandHistory } from './history/useCommandHistory'
 import { canSendNotification } from './lib/notifications'
 import { buildActivityCsv } from './lib/activity-export'
+import { buildReviewReportHtml } from './lib/review-report'
 
 const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] = [
   { id: 'today', labelKey: 'nav.today', icon: Gauge },
@@ -46,7 +47,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const navigate = useNavigate()
   const view = pathToView(location.pathname)
   const { snapshot, loading, error, reload, online, pendingCount, syncIssues } = useUserData(dataGateway, session?.user.id)
-  const { profile, tasks, goals, milestones, habits, points, focusMinutes, focusSessions, notificationRule, reflections, calendarConnection, externalCalendarEvents } = snapshot
+  const { profile, tasks, goals, milestones, habits, points, focusMinutes, focusSessions, notificationRule, reflections, calendarConnection, externalCalendarEvents, rewards } = snapshot
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [habitAddOpen, setHabitAddOpen] = useState(false)
@@ -431,6 +432,14 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     toast.success('เตรียมไฟล์ CSV แล้ว')
   }
 
+  const exportReviewPdf = () => {
+    const report = window.open('', '_blank')
+    if (!report) return void toast.error('เบราว์เซอร์บล็อกหน้ารายงาน กรุณาอนุญาต popup')
+    report.opener = null
+    report.document.write(buildReviewReportHtml(managedTasks, habits, reflections, points, focusMinutes))
+    report.document.close()
+  }
+
   const saveReflection = async (input: SaveReflectionInput) => {
     if (!dataGateway || !session) return false
     const result = await dataGateway.saveReflection(session.user.id, input)
@@ -441,6 +450,20 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     await reload()
     toast.success(input.period === 'daily' ? 'บันทึก Daily Reflection แล้ว' : 'บันทึก Weekly Review แล้ว')
     return true
+  }
+
+  const createReward = async (title: string, pointCost: number) => {
+    if (!dataGateway || !session) return false
+    const result = await dataGateway.createReward(session.user.id, title, pointCost)
+    if (!result.ok) { toast.error('เพิ่มรางวัลไม่สำเร็จ', { description: result.error.message }); return false }
+    await reload(); toast.success('เพิ่มรางวัลส่วนตัวแล้ว'); return true
+  }
+
+  const redeemReward = async (reward: PersonalReward) => {
+    if (!dataGateway || !session) return false
+    const result = await dataGateway.redeemReward(session.user.id, reward.id)
+    if (!result.ok) { toast.error('แลกรางวัลไม่สำเร็จ', { description: result.error.message }); return false }
+    await reload(); toast.success(`แลกรางวัล “${reward.title}” แล้ว`); return true
   }
 
   const connectGoogleCalendar = async () => {
@@ -543,7 +566,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
             <Route path={viewPaths.goals} element={<GoalsView goals={goals} milestones={milestones} tasks={managedTasks} onCreateGoal={createGoal} onToggleGoal={toggleGoal} onDeleteGoal={deleteGoal} onCreateMilestone={createMilestone} onToggleMilestone={toggleMilestone} onDeleteMilestone={deleteMilestone}/>}/>
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabitValue={setHabitValue} onFreeze={useHabitFreeze} onAdd={() => setHabitAddOpen(true)}/>}/>
             <Route path={viewPaths.focus} element={<FocusView tasks={managedTasks} sessions={focusSessions} notify={notify} onComplete={recordFocus}/>}/>
-            <Route path={viewPaths.insights} element={<InsightsView tasks={managedTasks} habits={habits} reflections={reflections} points={points} focusMinutes={focusMinutes} onSaveReflection={saveReflection} onExportCsv={exportActivityCsv}/>}/>
+            <Route path={viewPaths.insights} element={<InsightsView tasks={managedTasks} habits={habits} reflections={reflections} rewards={rewards} points={points} focusMinutes={focusMinutes} onSaveReflection={saveReflection} onExportCsv={exportActivityCsv} onExportPdf={exportReviewPdf} onCreateReward={createReward} onRedeemReward={redeemReward}/>}/>
             <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} notificationRule={notificationRule} notificationPermission={notificationPermission} calendarConnection={calendarConnection} onConnectGoogleCalendar={connectGoogleCalendar} onSyncGoogleCalendar={syncGoogleCalendar} onDisconnectGoogleCalendar={disconnectGoogleCalendar} onSave={saveProfile} onSaveNotificationRule={saveNotificationRule} onRequestNotificationPermission={requestNotificationPermission} onExport={exportAccount} onDelete={deleteAccount}/>}/>
             <Route path="*" element={<Navigate to={viewPaths.today} replace/>}/>
           </Routes>}
