@@ -34,10 +34,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
           cache: gradle
+      - run: npm ci
+      - run: npm run build
+      - run: npm run android:sync
       - run: chmod +x apps/android/gradlew
       - run: apps/android/gradlew -p apps/android assembleDebug
