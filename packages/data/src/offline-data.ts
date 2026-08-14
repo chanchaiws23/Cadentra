@@ -58,7 +58,7 @@ function readJson<T>(storage: StorageAdapter, key: string, fallback: T): T {
 }
 
 function defaultCache(): CachedUserData {
-  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0, focusSessions: [], notificationRule: null, reflections: [], calendarConnection: null, externalCalendarEvents: [] }, deletedTasks: [], deletedGoals: [], deletedMilestones: [] }
+  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0, focusSessions: [], notificationRule: null, reflections: [], calendarConnection: null, externalCalendarEvents: [], rewards: [] }, deletedTasks: [], deletedGoals: [], deletedMilestones: [] }
 }
 
 export function createOfflineUserDataGateway(
@@ -80,6 +80,7 @@ export function createOfflineUserDataGateway(
     cache.snapshot.reflections ??= []
     cache.snapshot.calendarConnection ??= null
     cache.snapshot.externalCalendarEvents ??= []
+    cache.snapshot.rewards ??= []
     cache.snapshot.habits = cache.snapshot.habits.map((habit) => ({
       ...habit,
       type: habit.type ?? 'boolean',
@@ -333,6 +334,8 @@ export function createOfflineUserDataGateway(
     startGoogleCalendar: (userId) => remote.startGoogleCalendar(userId),
     syncGoogleCalendar: (userId) => remote.syncGoogleCalendar(userId),
     disconnectGoogleCalendar: (userId) => remote.disconnectGoogleCalendar(userId),
+    createReward: (userId, title, pointCost) => remote.createReward(userId, title, pointCost),
+    redeemReward: (userId, rewardId) => remote.redeemReward(userId, rewardId),
     exportAccount: (userId) => remote.exportAccount(userId),
     async deleteAccount() {
       const result = await remote.deleteAccount()

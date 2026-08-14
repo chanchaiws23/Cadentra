@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildHabits, calculateCurrentStreak, isHabitScheduled, mapCalendarConnectionRow, mapExternalCalendarEventRow, mapFocusSessionRow, mapGoalRow, mapMilestoneRow, mapNotificationRuleRow, mapProfileRow, mapReflectionRow, mapTaskRow } from './cloud-data'
+import { buildHabits, calculateCurrentStreak, isHabitScheduled, mapCalendarConnectionRow, mapExternalCalendarEventRow, mapFocusSessionRow, mapGoalRow, mapMilestoneRow, mapNotificationRuleRow, mapPersonalRewardRow, mapProfileRow, mapReflectionRow, mapTaskRow } from './cloud-data'
 
 describe('cloud data mapping', () => {
   it('maps user profile preferences without exposing database column names', () => {
@@ -78,5 +78,9 @@ describe('cloud data mapping', () => {
   it('maps Google connection and read-only events', () => {
     expect(mapCalendarConnectionRow({ id: 'connection-1', provider: 'google', provider_account_id: 'chai@example.com', sync_status: 'idle', last_synced_at: null })).toMatchObject({ provider: 'google', accountId: 'chai@example.com' })
     expect(mapExternalCalendarEventRow({ id: 'event-1', connection_id: 'connection-1', title: 'Meeting', starts_at: '2026-08-14T01:00:00Z', ends_at: '2026-08-14T02:00:00Z', all_day: false })).toMatchObject({ title: 'Meeting', readOnly: true })
+  })
+
+  it('maps personal rewards without database column names', () => {
+    expect(mapPersonalRewardRow({ id: 'reward-1', user_id: 'user-1', title: 'Play games', point_cost: 100, redeemed_at: null, created_at: '2026-08-14T00:00:00Z' })).toMatchObject({ title: 'Play games', pointCost: 100, redeemedAt: undefined })
   })
 })

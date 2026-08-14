@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { CalendarConnection, ExternalCalendarEvent, FocusInterruption, FocusSession, Goal, Habit, HabitType, ItemStatus, Milestone, NotificationRule, Priority, Reflection, ReflectionPeriod, Task, TaskOccurrence, UserProfile } from '@cadentra/domain'
+import type { CalendarConnection, ExternalCalendarEvent, FocusInterruption, FocusSession, Goal, Habit, HabitType, ItemStatus, Milestone, NotificationRule, PersonalReward, Priority, Reflection, ReflectionPeriod, Task, TaskOccurrence, UserProfile } from '@cadentra/domain'
 import { dataError, type DataResult } from './repository'
 
 export interface UserDataSnapshot {
@@ -16,6 +16,7 @@ export interface UserDataSnapshot {
   reflections: Reflection[]
   calendarConnection: CalendarConnection | null
   externalCalendarEvents: ExternalCalendarEvent[]
+  rewards: PersonalReward[]
 }
 
 export interface CreateTaskInput {
@@ -91,6 +92,8 @@ export interface UserDataGateway {
   startGoogleCalendar(userId: string): Promise<DataResult<string>>
   syncGoogleCalendar(userId: string): Promise<DataResult<void>>
   disconnectGoogleCalendar(userId: string): Promise<DataResult<void>>
+  createReward(userId: string, title: string, pointCost: number): Promise<DataResult<void>>
+  redeemReward(userId: string, rewardId: string): Promise<DataResult<void>>
   exportAccount(userId: string): Promise<DataResult<AccountExport>>
   deleteAccount(): Promise<DataResult<void>>
   createTask(userId: string, input: CreateTaskInput): Promise<DataResult<string>>
@@ -236,6 +239,15 @@ interface ExternalCalendarEventRow {
   all_day: boolean
 }
 
+interface PersonalRewardRow {
+  id: string
+  user_id: string
+  title: string
+  point_cost: number
+  redeemed_at: string | null
+  created_at: string
+}
+
 export function mapProfileRow(row: ProfileRow | null): UserProfile | null {
   return row ? {
     id: row.id,
@@ -312,6 +324,10 @@ export function mapCalendarConnectionRow(row: CalendarConnectionRow | null): Cal
 
 export function mapExternalCalendarEventRow(row: ExternalCalendarEventRow): ExternalCalendarEvent {
   return { id: row.id, connectionId: row.connection_id, title: row.title, start: row.starts_at, end: row.ends_at, allDay: row.all_day, readOnly: true }
+}
+
+export function mapPersonalRewardRow(row: PersonalRewardRow): PersonalReward {
+  return { id: row.id, userId: row.user_id, title: row.title, pointCost: row.point_cost, redeemedAt: row.redeemed_at ?? undefined, createdAt: row.created_at }
 }
 
 function dateBefore(localDate: string, days: number): string {
@@ -401,7 +417,7 @@ function idempotentCreate(error: { message: string; code?: string } | null, enti
 export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataGateway {
   return {
     async load(userId, focusSince, localDate) {
-      const [profile, tasks, taskOccurrences, goals, milestones, habits, checkIns, points, focusSessions, notificationRule, reflections, calendarConnection, externalCalendarEvents] = await Promise.all([
+      const [profile, tasks, taskOccurrences, goals, milestones, habits, checkIns, points, focusSessions, notificationRule, reflections, calendarConnection, externalCalendarEvents, rewards] = await Promise.all([
         client.from('profiles').select('id,display_name,timezone,locale,gamification_enabled,health_ai_consent').eq('id', userId).maybeSingle(),
         client.from('tasks').select('id,user_id,title,starts_at,ends_at,category,priority,status,goal_id,recurrence_rule,updated_at').eq('user_id', userId).is('deleted_at', null).order('starts_at'),
         client.from('task_occurrences').select('task_id,local_date,status').eq('user_id', userId),
@@ -415,8 +431,9 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         client.from('reflections').select('id,user_id,period,local_date,content,created_at').eq('user_id', userId).order('local_date', { ascending: false }).limit(30),
         client.from('calendar_connections').select('id,provider,provider_account_id,sync_status,last_synced_at').eq('user_id', userId).eq('provider', 'google').maybeSingle(),
         client.from('external_calendar_events').select('id,connection_id,title,starts_at,ends_at,all_day').eq('user_id', userId).is('deleted_at', null).gte('ends_at', focusSince).order('starts_at').limit(250),
+        client.from('personal_rewards').select('id,user_id,title,point_cost,redeemed_at,created_at').eq('user_id', userId).is('deleted_at', null).order('created_at', { ascending: false }),
       ])
-      const error = profile.error ?? tasks.error ?? taskOccurrences.error ?? goals.error ?? milestones.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error ?? notificationRule.error ?? reflections.error ?? calendarConnection.error ?? externalCalendarEvents.error
+      const error = profile.error ?? tasks.error ?? taskOccurrences.error ?? goals.error ?? milestones.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error ?? notificationRule.error ?? reflections.error ?? calendarConnection.error ?? externalCalendarEvents.error ?? rewards.error
       if (error) return failure(error)
       return {
         ok: true,
@@ -434,6 +451,7 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
           reflections: (reflections.data as ReflectionRow[]).map(mapReflectionRow),
           calendarConnection: mapCalendarConnectionRow(calendarConnection.data as CalendarConnectionRow | null),
           externalCalendarEvents: (externalCalendarEvents.data as ExternalCalendarEventRow[]).map(mapExternalCalendarEventRow),
+          rewards: (rewards.data as PersonalRewardRow[]).map(mapPersonalRewardRow),
         },
       }
     },
@@ -481,6 +499,16 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
       return error ? failure(error) : ok()
     },
 
+    async createReward(userId, title, pointCost) {
+      const { error } = await client.from('personal_rewards').insert({ user_id: userId, title, point_cost: pointCost })
+      return error ? failure(error) : ok()
+    },
+
+    async redeemReward(_userId, rewardId) {
+      const { error } = await client.rpc('redeem_personal_reward', { p_reward_id: rewardId })
+      return error ? failure(error) : ok()
+    },
+
     async exportAccount(userId) {
       const queries = {
         profiles: client.from('profiles').select('*').eq('id', userId),
@@ -497,6 +525,7 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         calendar_connections: client.from('calendar_connections').select('id,user_id,provider,provider_account_id,sync_cursor,sync_status,last_synced_at,created_at').eq('user_id', userId),
         external_event_links: client.from('external_event_links').select('*').eq('user_id', userId),
         external_calendar_events: client.from('external_calendar_events').select('*').eq('user_id', userId),
+        personal_rewards: client.from('personal_rewards').select('*').eq('user_id', userId),
         daily_health_aggregates: client.from('daily_health_aggregates').select('*').eq('user_id', userId),
         audit_events: client.from('audit_events').select('*').eq('user_id', userId),
       }
