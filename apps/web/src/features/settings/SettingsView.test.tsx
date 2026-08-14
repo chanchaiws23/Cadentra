@@ -9,7 +9,7 @@ const profile: UserProfile = {
   id: 'user-1', displayName: 'Chai', timezone: 'Asia/Bangkok', locale: 'th',
   gamificationEnabled: true, healthAiConsent: false,
 }
-const notificationProps = { notificationRule: null, notificationPermission: 'default' as const, onSaveNotificationRule: vi.fn().mockResolvedValue(true), onRequestNotificationPermission: vi.fn().mockResolvedValue(undefined), calendarConnection: null, onConnectGoogleCalendar: vi.fn().mockResolvedValue(undefined), onSyncGoogleCalendar: vi.fn().mockResolvedValue(undefined), onDisconnectGoogleCalendar: vi.fn().mockResolvedValue(undefined) }
+const notificationProps = { notificationRule: null, notificationPermission: 'default' as const, onSaveNotificationRule: vi.fn().mockResolvedValue(true), onRequestNotificationPermission: vi.fn().mockResolvedValue(undefined), onSendTestNotification: vi.fn().mockResolvedValue(undefined), calendarConnection: null, onConnectGoogleCalendar: vi.fn().mockResolvedValue(undefined), onSyncGoogleCalendar: vi.fn().mockResolvedValue(undefined), onDisconnectGoogleCalendar: vi.fn().mockResolvedValue(undefined) }
 
 describe('SettingsView', () => {
   afterEach(cleanup)
@@ -47,7 +47,7 @@ describe('SettingsView', () => {
     render(<SettingsView {...notificationProps} onSaveNotificationRule={onSaveNotificationRule} onRequestNotificationPermission={onRequestNotificationPermission} profile={profile} email="chai@example.com" onSave={vi.fn().mockResolvedValue(true)} onExport={vi.fn()} onDelete={vi.fn()}/>)
     fireEvent.click(screen.getByLabelText('เปิดการแจ้งเตือนบนอุปกรณ์นี้'))
     fireEvent.change(screen.getByLabelText('จำกัดการแจ้งเตือนต่อวัน'), { target: { value: '4' } })
-    fireEvent.click(screen.getByRole('button', { name: 'ขอสิทธิ์จากเบราว์เซอร์' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ลงทะเบียน Push บนอุปกรณ์นี้' }))
     expect(onRequestNotificationPermission).toHaveBeenCalledOnce()
     fireEvent.click(screen.getByRole('button', { name: 'บันทึกการตั้งค่า' }))
     await waitFor(() => expect(onSaveNotificationRule).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, dailyLimit: 4 })))

@@ -78,6 +78,12 @@ export interface SaveReflectionInput {
   nextStep: string
 }
 
+export interface RegisterDeviceInput {
+  platform: 'web' | 'android'
+  endpoint: string
+  registration: Record<string, unknown>
+}
+
 export interface AccountExport {
   exportedAt: string
   userId: string
@@ -94,6 +100,8 @@ export interface UserDataGateway {
   disconnectGoogleCalendar(userId: string): Promise<DataResult<void>>
   createReward(userId: string, title: string, pointCost: number): Promise<DataResult<void>>
   redeemReward(userId: string, rewardId: string): Promise<DataResult<void>>
+  registerDevice(userId: string, input: RegisterDeviceInput): Promise<DataResult<void>>
+  sendTestNotification(userId: string): Promise<DataResult<void>>
   exportAccount(userId: string): Promise<DataResult<AccountExport>>
   deleteAccount(): Promise<DataResult<void>>
   createTask(userId: string, input: CreateTaskInput): Promise<DataResult<string>>
@@ -509,6 +517,16 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
       return error ? failure(error) : ok()
     },
 
+    async registerDevice(userId, input) {
+      const { error } = await client.from('device_registrations').upsert({ user_id: userId, platform: input.platform, endpoint: input.endpoint, registration: input.registration, active: true, last_seen_at: new Date().toISOString() }, { onConflict: 'user_id,endpoint' })
+      return error ? failure(error) : ok()
+    },
+
+    async sendTestNotification(_userId) {
+      const { error } = await client.functions.invoke('send-notification', { body: { kind: 'test', title: 'Cadentra พร้อมแล้ว', body: 'การแจ้งเตือนบนอุปกรณ์นี้ทำงานตามปกติ' } })
+      return error ? failure(error) : ok()
+    },
+
     async exportAccount(userId) {
       const queries = {
         profiles: client.from('profiles').select('*').eq('id', userId),
@@ -526,6 +544,7 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         external_event_links: client.from('external_event_links').select('*').eq('user_id', userId),
         external_calendar_events: client.from('external_calendar_events').select('*').eq('user_id', userId),
         personal_rewards: client.from('personal_rewards').select('*').eq('user_id', userId),
+        device_registrations: client.from('device_registrations').select('id,user_id,platform,active,last_seen_at,created_at').eq('user_id', userId),
         daily_health_aggregates: client.from('daily_health_aggregates').select('*').eq('user_id', userId),
         audit_events: client.from('audit_events').select('*').eq('user_id', userId),
       }

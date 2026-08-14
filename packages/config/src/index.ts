@@ -2,6 +2,7 @@ export interface WebEnvironment {
   mode: 'local' | 'cloud'
   supabaseUrl?: string
   supabaseAnonKey?: string
+  vapidPublicKey?: string
 }
 
 export class EnvironmentConfigurationError extends Error {
@@ -15,6 +16,7 @@ function optionalString(value: unknown): string | undefined {
 export function parseWebEnvironment(input: Record<string, unknown>): WebEnvironment {
   const supabaseUrl = optionalString(input.VITE_SUPABASE_URL)
   const supabaseAnonKey = optionalString(input.VITE_SUPABASE_ANON_KEY)
+  const vapidPublicKey = optionalString(input.VITE_VAPID_PUBLIC_KEY)
 
   if (Boolean(supabaseUrl) !== Boolean(supabaseAnonKey)) {
     throw new EnvironmentConfigurationError(
@@ -38,7 +40,8 @@ export function parseWebEnvironment(input: Record<string, unknown>): WebEnvironm
     }
   }
 
+  const push = vapidPublicKey ? { vapidPublicKey } : {}
   return supabaseUrl && supabaseAnonKey
-    ? { mode: 'cloud', supabaseUrl, supabaseAnonKey }
-    : { mode: 'local' }
+    ? { mode: 'cloud', supabaseUrl, supabaseAnonKey, ...push }
+    : { mode: 'local', ...push }
 }

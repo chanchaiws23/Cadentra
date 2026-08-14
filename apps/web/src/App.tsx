@@ -29,6 +29,8 @@ import { useCommandHistory } from './history/useCommandHistory'
 import { canSendNotification } from './lib/notifications'
 import { buildActivityCsv } from './lib/activity-export'
 import { buildReviewReportHtml } from './lib/review-report'
+import { registerPushDevice } from './lib/push-registration'
+import { environment } from './config/environment'
 
 const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] = [
   { id: 'today', labelKey: 'nav.today', icon: Gauge },
@@ -388,8 +390,24 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   }
 
   const requestNotificationPermission = async () => {
-    if (typeof Notification === 'undefined') return void setNotificationPermission('unsupported')
-    setNotificationPermission(await Notification.requestPermission())
+    if (!dataGateway || !session) return
+    try {
+      const device = await registerPushDevice(environment.vapidPublicKey)
+      const result = await dataGateway.registerDevice(session.user.id, device)
+      if (!result.ok) throw new Error(result.error.message)
+      setNotificationPermission('granted')
+      toast.success(device.platform === 'android' ? 'ลงทะเบียน Android Push แล้ว' : 'ลงทะเบียน Web Push แล้ว')
+    } catch (error) {
+      if (typeof Notification === 'undefined') setNotificationPermission('unsupported')
+      toast.error('เปิด Push Notification ไม่สำเร็จ', { description: error instanceof Error ? error.message : 'Unknown error' })
+    }
+  }
+
+  const sendTestNotification = async () => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.sendTestNotification(session.user.id)
+    if (!result.ok) return void toast.error('ส่งการแจ้งเตือนทดสอบไม่สำเร็จ', { description: result.error.message })
+    toast.success('ส่งการแจ้งเตือนทดสอบแล้ว')
   }
 
   const saveProfile = async (input: UpdateProfileInput) => {
@@ -567,7 +585,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabitValue={setHabitValue} onFreeze={useHabitFreeze} onAdd={() => setHabitAddOpen(true)}/>}/>
             <Route path={viewPaths.focus} element={<FocusView tasks={managedTasks} sessions={focusSessions} notify={notify} onComplete={recordFocus}/>}/>
             <Route path={viewPaths.insights} element={<InsightsView tasks={managedTasks} habits={habits} reflections={reflections} rewards={rewards} points={points} focusMinutes={focusMinutes} onSaveReflection={saveReflection} onExportCsv={exportActivityCsv} onExportPdf={exportReviewPdf} onCreateReward={createReward} onRedeemReward={redeemReward}/>}/>
-            <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} notificationRule={notificationRule} notificationPermission={notificationPermission} calendarConnection={calendarConnection} onConnectGoogleCalendar={connectGoogleCalendar} onSyncGoogleCalendar={syncGoogleCalendar} onDisconnectGoogleCalendar={disconnectGoogleCalendar} onSave={saveProfile} onSaveNotificationRule={saveNotificationRule} onRequestNotificationPermission={requestNotificationPermission} onExport={exportAccount} onDelete={deleteAccount}/>}/>
+            <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} notificationRule={notificationRule} notificationPermission={notificationPermission} calendarConnection={calendarConnection} onConnectGoogleCalendar={connectGoogleCalendar} onSyncGoogleCalendar={syncGoogleCalendar} onDisconnectGoogleCalendar={disconnectGoogleCalendar} onSave={saveProfile} onSaveNotificationRule={saveNotificationRule} onRequestNotificationPermission={requestNotificationPermission} onSendTestNotification={sendTestNotification} onExport={exportAccount} onDelete={deleteAccount}/>}/>
             <Route path="*" element={<Navigate to={viewPaths.today} replace/>}/>
           </Routes>}
         </section>
