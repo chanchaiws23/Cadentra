@@ -123,6 +123,24 @@ export interface Reflection {
   createdAt: string
 }
 
+export interface CalendarConnection {
+  id: string
+  provider: 'google'
+  accountId: string
+  syncStatus: 'idle' | 'syncing' | 'error'
+  lastSyncedAt?: string
+}
+
+export interface ExternalCalendarEvent {
+  id: string
+  connectionId: string
+  title: string
+  start: string
+  end: string
+  allDay: boolean
+  readOnly: true
+}
+
 export interface AIProposalChange {
   id: string
   taskId: string

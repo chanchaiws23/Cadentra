@@ -26,6 +26,8 @@ const snapshot: UserDataSnapshot = {
   focusSessions: [],
   notificationRule: null,
   reflections: [],
+  calendarConnection: null,
+  externalCalendarEvents: [],
 }
 
 function remoteGateway(): UserDataGateway {
@@ -34,6 +36,9 @@ function remoteGateway(): UserDataGateway {
     saveProfile: vi.fn(async () => ({ ok: true as const, value: undefined })),
     saveNotificationRule: vi.fn(async () => ({ ok: true as const, value: undefined })),
     saveReflection: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    startGoogleCalendar: vi.fn(async () => ({ ok: true as const, value: 'https://accounts.google.com/' })),
+    syncGoogleCalendar: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    disconnectGoogleCalendar: vi.fn(async () => ({ ok: true as const, value: undefined })),
     exportAccount: vi.fn(async (userId) => ({ ok: true as const, value: { exportedAt: '', userId, data: {} } })),
     deleteAccount: vi.fn(async () => ({ ok: true as const, value: undefined })),
     createTask: vi.fn(async (_userId, input) => ({ ok: true as const, value: input.entityId! })),

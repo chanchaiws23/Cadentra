@@ -46,7 +46,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const navigate = useNavigate()
   const view = pathToView(location.pathname)
   const { snapshot, loading, error, reload, online, pendingCount, syncIssues } = useUserData(dataGateway, session?.user.id)
-  const { profile, tasks, goals, milestones, habits, points, focusMinutes, focusSessions, notificationRule, reflections } = snapshot
+  const { profile, tasks, goals, milestones, habits, points, focusMinutes, focusSessions, notificationRule, reflections, calendarConnection, externalCalendarEvents } = snapshot
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [habitAddOpen, setHabitAddOpen] = useState(false)
@@ -443,6 +443,29 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     return true
   }
 
+  const connectGoogleCalendar = async () => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.startGoogleCalendar(session.user.id)
+    if (!result.ok) return void toast.error('เริ่มเชื่อมต่อ Google Calendar ไม่สำเร็จ', { description: result.error.message })
+    window.location.assign(result.value)
+  }
+
+  const syncGoogleCalendar = async () => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.syncGoogleCalendar(session.user.id)
+    if (!result.ok) return void toast.error('ซิงก์ Google Calendar ไม่สำเร็จ', { description: result.error.message })
+    await reload()
+    toast.success('ซิงก์ Google Calendar แล้ว')
+  }
+
+  const disconnectGoogleCalendar = async () => {
+    if (!dataGateway || !session) return
+    const result = await dataGateway.disconnectGoogleCalendar(session.user.id)
+    if (!result.ok) return void toast.error('ยกเลิกการเชื่อมต่อไม่สำเร็จ', { description: result.error.message })
+    await reload()
+    toast.success('ยกเลิก Google Calendar แล้ว')
+  }
+
   const deleteAccount = async () => {
     if (!dataGateway) return false
     const result = await dataGateway.deleteAccount()
@@ -515,13 +538,13 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
           {loading ? <DataLoading/> : error ? <DataLoadError message={error} onRetry={() => void reload()}/> : <Routes>
             <Route path="/" element={<Navigate to={viewPaths.today} replace/>}/>
             <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={displayName} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => toast.info('AI Coach จะเปิดใช้เมื่อ Edge Function พร้อม')} />}/>
-            <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} onTask={toggleTask} onReschedule={rescheduleTask}/>}/>
+            <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} externalEvents={externalCalendarEvents} onTask={toggleTask} onReschedule={rescheduleTask}/>}/>
             <Route path={viewPaths.tasks} element={<TasksView tasks={tasks} onTask={toggleTask} onDelete={deleteTask} onAdd={() => setAddOpen(true)}/>}/>
             <Route path={viewPaths.goals} element={<GoalsView goals={goals} milestones={milestones} tasks={managedTasks} onCreateGoal={createGoal} onToggleGoal={toggleGoal} onDeleteGoal={deleteGoal} onCreateMilestone={createMilestone} onToggleMilestone={toggleMilestone} onDeleteMilestone={deleteMilestone}/>}/>
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabitValue={setHabitValue} onFreeze={useHabitFreeze} onAdd={() => setHabitAddOpen(true)}/>}/>
             <Route path={viewPaths.focus} element={<FocusView tasks={managedTasks} sessions={focusSessions} notify={notify} onComplete={recordFocus}/>}/>
             <Route path={viewPaths.insights} element={<InsightsView tasks={managedTasks} habits={habits} reflections={reflections} points={points} focusMinutes={focusMinutes} onSaveReflection={saveReflection} onExportCsv={exportActivityCsv}/>}/>
-            <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} notificationRule={notificationRule} notificationPermission={notificationPermission} onSave={saveProfile} onSaveNotificationRule={saveNotificationRule} onRequestNotificationPermission={requestNotificationPermission} onExport={exportAccount} onDelete={deleteAccount}/>}/>
+            <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} notificationRule={notificationRule} notificationPermission={notificationPermission} calendarConnection={calendarConnection} onConnectGoogleCalendar={connectGoogleCalendar} onSyncGoogleCalendar={syncGoogleCalendar} onDisconnectGoogleCalendar={disconnectGoogleCalendar} onSave={saveProfile} onSaveNotificationRule={saveNotificationRule} onRequestNotificationPermission={requestNotificationPermission} onExport={exportAccount} onDelete={deleteAccount}/>}/>
             <Route path="*" element={<Navigate to={viewPaths.today} replace/>}/>
           </Routes>}
         </section>

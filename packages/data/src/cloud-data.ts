@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { FocusInterruption, FocusSession, Goal, Habit, HabitType, ItemStatus, Milestone, NotificationRule, Priority, Reflection, ReflectionPeriod, Task, TaskOccurrence, UserProfile } from '@cadentra/domain'
+import type { CalendarConnection, ExternalCalendarEvent, FocusInterruption, FocusSession, Goal, Habit, HabitType, ItemStatus, Milestone, NotificationRule, Priority, Reflection, ReflectionPeriod, Task, TaskOccurrence, UserProfile } from '@cadentra/domain'
 import { dataError, type DataResult } from './repository'
 
 export interface UserDataSnapshot {
@@ -14,6 +14,8 @@ export interface UserDataSnapshot {
   focusSessions: FocusSession[]
   notificationRule: NotificationRule | null
   reflections: Reflection[]
+  calendarConnection: CalendarConnection | null
+  externalCalendarEvents: ExternalCalendarEvent[]
 }
 
 export interface CreateTaskInput {
@@ -86,6 +88,9 @@ export interface UserDataGateway {
   saveProfile(userId: string, input: UpdateProfileInput): Promise<DataResult<void>>
   saveNotificationRule(userId: string, input: Omit<NotificationRule, 'userId'>): Promise<DataResult<void>>
   saveReflection(userId: string, input: SaveReflectionInput): Promise<DataResult<void>>
+  startGoogleCalendar(userId: string): Promise<DataResult<string>>
+  syncGoogleCalendar(userId: string): Promise<DataResult<void>>
+  disconnectGoogleCalendar(userId: string): Promise<DataResult<void>>
   exportAccount(userId: string): Promise<DataResult<AccountExport>>
   deleteAccount(): Promise<DataResult<void>>
   createTask(userId: string, input: CreateTaskInput): Promise<DataResult<string>>
@@ -214,6 +219,23 @@ interface ReflectionRow {
   created_at: string
 }
 
+interface CalendarConnectionRow {
+  id: string
+  provider: 'google'
+  provider_account_id: string
+  sync_status: 'idle' | 'syncing' | 'error'
+  last_synced_at: string | null
+}
+
+interface ExternalCalendarEventRow {
+  id: string
+  connection_id: string
+  title: string
+  starts_at: string
+  ends_at: string
+  all_day: boolean
+}
+
 export function mapProfileRow(row: ProfileRow | null): UserProfile | null {
   return row ? {
     id: row.id,
@@ -282,6 +304,14 @@ export function mapReflectionRow(row: ReflectionRow): Reflection {
     nextStep: row.content?.nextStep ?? '',
     createdAt: row.created_at,
   }
+}
+
+export function mapCalendarConnectionRow(row: CalendarConnectionRow | null): CalendarConnection | null {
+  return row ? { id: row.id, provider: row.provider, accountId: row.provider_account_id, syncStatus: row.sync_status, lastSyncedAt: row.last_synced_at ?? undefined } : null
+}
+
+export function mapExternalCalendarEventRow(row: ExternalCalendarEventRow): ExternalCalendarEvent {
+  return { id: row.id, connectionId: row.connection_id, title: row.title, start: row.starts_at, end: row.ends_at, allDay: row.all_day, readOnly: true }
 }
 
 function dateBefore(localDate: string, days: number): string {
@@ -371,7 +401,7 @@ function idempotentCreate(error: { message: string; code?: string } | null, enti
 export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataGateway {
   return {
     async load(userId, focusSince, localDate) {
-      const [profile, tasks, taskOccurrences, goals, milestones, habits, checkIns, points, focusSessions, notificationRule, reflections] = await Promise.all([
+      const [profile, tasks, taskOccurrences, goals, milestones, habits, checkIns, points, focusSessions, notificationRule, reflections, calendarConnection, externalCalendarEvents] = await Promise.all([
         client.from('profiles').select('id,display_name,timezone,locale,gamification_enabled,health_ai_consent').eq('id', userId).maybeSingle(),
         client.from('tasks').select('id,user_id,title,starts_at,ends_at,category,priority,status,goal_id,recurrence_rule,updated_at').eq('user_id', userId).is('deleted_at', null).order('starts_at'),
         client.from('task_occurrences').select('task_id,local_date,status').eq('user_id', userId),
@@ -383,8 +413,10 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         client.from('focus_sessions').select('id,user_id,task_id,planned_minutes,elapsed_seconds,pause_seconds,interruption_count,interruptions,started_at,ended_at').eq('user_id', userId).gte('created_at', focusSince).order('started_at', { ascending: false }),
         client.from('notification_rules').select('user_id,enabled,quiet_start,quiet_end,daily_limit,focus_break_minutes').eq('user_id', userId).maybeSingle(),
         client.from('reflections').select('id,user_id,period,local_date,content,created_at').eq('user_id', userId).order('local_date', { ascending: false }).limit(30),
+        client.from('calendar_connections').select('id,provider,provider_account_id,sync_status,last_synced_at').eq('user_id', userId).eq('provider', 'google').maybeSingle(),
+        client.from('external_calendar_events').select('id,connection_id,title,starts_at,ends_at,all_day').eq('user_id', userId).is('deleted_at', null).gte('ends_at', focusSince).order('starts_at').limit(250),
       ])
-      const error = profile.error ?? tasks.error ?? taskOccurrences.error ?? goals.error ?? milestones.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error ?? notificationRule.error ?? reflections.error
+      const error = profile.error ?? tasks.error ?? taskOccurrences.error ?? goals.error ?? milestones.error ?? habits.error ?? checkIns.error ?? points.error ?? focusSessions.error ?? notificationRule.error ?? reflections.error ?? calendarConnection.error ?? externalCalendarEvents.error
       if (error) return failure(error)
       return {
         ok: true,
@@ -400,6 +432,8 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
           focusSessions: (focusSessions.data as FocusSessionRow[]).map(mapFocusSessionRow),
           notificationRule: mapNotificationRuleRow(notificationRule.data as NotificationRuleRow | null),
           reflections: (reflections.data as ReflectionRow[]).map(mapReflectionRow),
+          calendarConnection: mapCalendarConnectionRow(calendarConnection.data as CalendarConnectionRow | null),
+          externalCalendarEvents: (externalCalendarEvents.data as ExternalCalendarEventRow[]).map(mapExternalCalendarEventRow),
         },
       }
     },
@@ -432,6 +466,21 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
       return error ? failure(error) : ok()
     },
 
+    async startGoogleCalendar(_userId) {
+      const { data, error } = await client.functions.invoke('google-calendar', { body: { action: 'start' } })
+      return error || !data?.url ? failure(error ?? { message: 'Google Calendar authorization URL was not returned.' }) : { ok: true, value: data.url as string }
+    },
+
+    async syncGoogleCalendar(_userId) {
+      const { error } = await client.functions.invoke('google-calendar', { body: { action: 'sync' } })
+      return error ? failure(error) : ok()
+    },
+
+    async disconnectGoogleCalendar(_userId) {
+      const { error } = await client.functions.invoke('google-calendar', { body: { action: 'disconnect' } })
+      return error ? failure(error) : ok()
+    },
+
     async exportAccount(userId) {
       const queries = {
         profiles: client.from('profiles').select('*').eq('id', userId),
@@ -447,6 +496,7 @@ export function createSupabaseUserDataGateway(client: SupabaseClient): UserDataG
         ai_proposals: client.from('ai_proposals').select('*').eq('user_id', userId),
         calendar_connections: client.from('calendar_connections').select('id,user_id,provider,provider_account_id,sync_cursor,sync_status,last_synced_at,created_at').eq('user_id', userId),
         external_event_links: client.from('external_event_links').select('*').eq('user_id', userId),
+        external_calendar_events: client.from('external_calendar_events').select('*').eq('user_id', userId),
         daily_health_aggregates: client.from('daily_health_aggregates').select('*').eq('user_id', userId),
         audit_events: client.from('audit_events').select('*').eq('user_id', userId),
       }
