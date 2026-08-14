@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildHabits, calculateCurrentStreak, isHabitScheduled, mapFocusSessionRow, mapGoalRow, mapMilestoneRow, mapProfileRow, mapTaskRow } from './cloud-data'
+import { buildHabits, calculateCurrentStreak, isHabitScheduled, mapFocusSessionRow, mapGoalRow, mapMilestoneRow, mapNotificationRuleRow, mapProfileRow, mapTaskRow } from './cloud-data'
 
 describe('cloud data mapping', () => {
   it('maps user profile preferences without exposing database column names', () => {
@@ -65,5 +65,9 @@ describe('cloud data mapping', () => {
       interruptions: [{ reason: 'โทรศัพท์', recordedAt: '2026-08-10T03:10:00Z', elapsedSeconds: 300 }],
       started_at: '2026-08-10T03:00:00Z', ended_at: '2026-08-10T03:21:00Z',
     })).toMatchObject({ id: 'focus-1', pauseSeconds: 60, interruptionCount: 1, status: 'completed' })
+  })
+
+  it('maps notification quiet hours without database names', () => {
+    expect(mapNotificationRuleRow({ user_id: 'user-1', enabled: true, quiet_start: '22:00:00', quiet_end: '07:00:00', daily_limit: 5, focus_break_minutes: 45 })).toEqual({ userId: 'user-1', enabled: true, quietStart: '22:00', quietEnd: '07:00', dailyLimit: 5, focusBreakMinutes: 45 })
   })
 })

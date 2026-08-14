@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Download, Save, ShieldCheck, Trash2 } from 'lucide-react'
-import type { UserProfile } from '@cadentra/domain'
+import type { NotificationRule, UserProfile } from '@cadentra/domain'
 import type { UpdateProfileInput } from '@cadentra/data'
 import { PageHeading } from '../../components/PageHeading'
 
@@ -8,6 +8,10 @@ interface SettingsViewProps {
   profile: UserProfile | null
   email: string
   onSave: (input: UpdateProfileInput) => Promise<boolean>
+  notificationRule: NotificationRule | null
+  notificationPermission: NotificationPermission | 'unsupported'
+  onSaveNotificationRule: (input: Omit<NotificationRule, 'userId'>) => Promise<boolean>
+  onRequestNotificationPermission: () => Promise<void>
   onExport: () => Promise<boolean>
   onDelete: () => Promise<boolean>
 }
@@ -28,19 +32,21 @@ function initialValues(profile: UserProfile | null, email: string): UpdateProfil
   }
 }
 
-export function SettingsView({ profile, email, onSave, onExport, onDelete }: SettingsViewProps) {
+export function SettingsView({ profile, email, notificationRule, notificationPermission, onSave, onSaveNotificationRule, onRequestNotificationPermission, onExport, onDelete }: SettingsViewProps) {
   const [values, setValues] = useState(() => initialValues(profile, email))
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
+  const [notificationValues, setNotificationValues] = useState(() => notificationRule ? { ...notificationRule } : { enabled: false, quietStart: '22:00', quietEnd: '07:00', dailyLimit: 6, focusBreakMinutes: 45 })
 
   useEffect(() => setValues(initialValues(profile, email)), [email, profile])
+  useEffect(() => { if (notificationRule) setNotificationValues(notificationRule) }, [notificationRule])
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     setSaving(true)
-    await onSave({ ...values, displayName: values.displayName.trim(), timezone: values.timezone.trim() })
+    await Promise.all([onSave({ ...values, displayName: values.displayName.trim(), timezone: values.timezone.trim() }), onSaveNotificationRule(notificationValues)])
     setSaving(false)
   }
 
@@ -56,6 +62,16 @@ export function SettingsView({ profile, email, onSave, onExport, onDelete }: Set
             <label className="text-sm font-semibold text-ink">อีเมล<input className="mt-2 block min-h-11 w-full rounded-lg border border-line bg-[#efeee8] px-3.5 font-normal text-muted" value={email} disabled/></label>
             <label className="text-sm font-semibold text-ink">เขตเวลา<input className="mt-2 block min-h-11 w-full rounded-lg border border-line bg-paper px-3.5 font-normal outline-none focus:border-accent focus:ring-3 focus:ring-[#246b5015]" value={values.timezone} onChange={(event) => setValues((current) => ({ ...current, timezone: event.target.value }))} placeholder="Asia/Bangkok" required/></label>
             <label className="text-sm font-semibold text-ink">ภาษา<select className="mt-2 block min-h-11 w-full rounded-lg border border-line bg-paper px-3.5 font-normal outline-none focus:border-accent focus:ring-3 focus:ring-[#246b5015]" value={values.locale} onChange={(event) => setValues((current) => ({ ...current, locale: event.target.value as 'th' | 'en' }))}><option value="th">ไทย</option><option value="en">English</option></select></label>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-line bg-surface p-6 max-[640px]:p-4">
+          <h2 className="font-display text-xl">การแจ้งเตือน</h2>
+          <p className="mt-1 text-sm text-muted">กำหนดขอบเขตการเตือนเพื่อให้ช่วยได้โดยไม่รบกวนเกินไป</p>
+          <div className="mt-5 divide-y divide-line">
+            <label className="flex cursor-pointer items-start justify-between gap-5 py-4"><span><strong className="block text-sm">เปิดการแจ้งเตือนบนอุปกรณ์นี้</strong><small className="mt-1 block text-muted">สิทธิ์ปัจจุบัน: {notificationPermission}</small></span><input aria-label="เปิดการแจ้งเตือนบนอุปกรณ์นี้" type="checkbox" className="mt-1 size-5 accent-accent" checked={notificationValues.enabled} onChange={(event) => setNotificationValues((current) => ({ ...current, enabled: event.target.checked }))}/></label>
+            <div className="grid gap-4 py-5 sm:grid-cols-2"><label className="text-sm font-semibold">Quiet hours เริ่ม<input aria-label="Quiet hours เริ่ม" type="time" className="mt-2 block min-h-11 w-full rounded-lg border border-line bg-paper px-3" value={notificationValues.quietStart} onChange={(event) => setNotificationValues((current) => ({ ...current, quietStart: event.target.value }))}/></label><label className="text-sm font-semibold">Quiet hours สิ้นสุด<input aria-label="Quiet hours สิ้นสุด" type="time" className="mt-2 block min-h-11 w-full rounded-lg border border-line bg-paper px-3" value={notificationValues.quietEnd} onChange={(event) => setNotificationValues((current) => ({ ...current, quietEnd: event.target.value }))}/></label><label className="text-sm font-semibold">จำกัดต่อวัน<input aria-label="จำกัดการแจ้งเตือนต่อวัน" type="number" min="1" max="20" className="mt-2 block min-h-11 w-full rounded-lg border border-line bg-paper px-3" value={notificationValues.dailyLimit} onChange={(event) => setNotificationValues((current) => ({ ...current, dailyLimit: Number(event.target.value) }))}/></label><label className="text-sm font-semibold">เตือนพักหลังโฟกัส<input aria-label="เตือนพักหลังโฟกัส" type="number" min="15" max="180" className="mt-2 block min-h-11 w-full rounded-lg border border-line bg-paper px-3" value={notificationValues.focusBreakMinutes} onChange={(event) => setNotificationValues((current) => ({ ...current, focusBreakMinutes: Number(event.target.value) }))}/><small className="mt-1 block text-muted">นาที</small></label></div>
+            <div className="pt-4"><button type="button" className="secondary" onClick={() => void onRequestNotificationPermission()}>ขอสิทธิ์จากเบราว์เซอร์</button></div>
           </div>
         </section>
 

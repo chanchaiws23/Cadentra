@@ -26,6 +26,7 @@ import type { MessageKey } from './i18n/messages'
 import { formatMinutes, formatTime, localDateKey, todayKey } from './lib/date'
 import { pathToView, viewPaths, type View } from './routing'
 import { useCommandHistory } from './history/useCommandHistory'
+import { canSendNotification } from './lib/notifications'
 
 const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] = [
   { id: 'today', labelKey: 'nav.today', icon: Gauge },
@@ -44,16 +45,27 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const navigate = useNavigate()
   const view = pathToView(location.pathname)
   const { snapshot, loading, error, reload, online, pendingCount, syncIssues } = useUserData(dataGateway, session?.user.id)
-  const { profile, tasks, goals, milestones, habits, points, focusMinutes, focusSessions } = snapshot
+  const { profile, tasks, goals, milestones, habits, points, focusMinutes, focusSessions, notificationRule } = snapshot
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [habitAddOpen, setHabitAddOpen] = useState(false)
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission)
   const commandHistory = useCommandHistory()
   const todayTasks = tasks.filter((task) => localDateKey(task.start) === todayKey)
   const managedTasks = collapseRecurringTasks(tasks, todayKey)
   const rate = completionRate(todayTasks)
   const completedHabits = habits.filter((habit) => habit.completedDates.includes(todayKey)).length
   const notify = useCallback((message: string) => { toast.success(message) }, [])
+  const sendSystemNotification = useCallback((message: string) => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    const now = new Date()
+    const dateKey = localDateKey(now)
+    const storageKey = `cadentra:notifications:${dateKey}`
+    const sentToday = Number(localStorage.getItem(storageKey) ?? 0)
+    if (!canSendNotification(notificationRule, now, sentToday)) return
+    new Notification('Cadentra', { body: message, tag: `cadentra-${dateKey}-${sentToday}` })
+    localStorage.setItem(storageKey, String(sentToday + 1))
+  }, [notificationRule])
 
   const undoLast = useCallback(async () => {
     const command = await commandHistory.undo()
@@ -363,6 +375,19 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     const result = await dataGateway.recordFocusSession(session.user.id, input)
     if (!result.ok) return toast.error('บันทึกเวลาโฟกัสไม่สำเร็จ', { description: result.error.message })
     await reload()
+    if (notificationRule && input.elapsedSeconds >= notificationRule.focusBreakMinutes * 60) sendSystemNotification(`คุณโฟกัสครบ ${Math.floor(input.elapsedSeconds / 60)} นาทีแล้ว ถึงเวลาพักสายตา`)
+  }
+
+  const saveNotificationRule = async (input: Parameters<UserDataGateway['saveNotificationRule']>[1]) => {
+    if (!dataGateway || !session) return false
+    const result = await dataGateway.saveNotificationRule(session.user.id, input)
+    if (!result.ok) { toast.error('บันทึกการแจ้งเตือนไม่สำเร็จ', { description: result.error.message }); return false }
+    await reload(); return true
+  }
+
+  const requestNotificationPermission = async () => {
+    if (typeof Notification === 'undefined') return void setNotificationPermission('unsupported')
+    setNotificationPermission(await Notification.requestPermission())
   }
 
   const saveProfile = async (input: UpdateProfileInput) => {
@@ -473,7 +498,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabitValue={setHabitValue} onFreeze={useHabitFreeze} onAdd={() => setHabitAddOpen(true)}/>}/>
             <Route path={viewPaths.focus} element={<FocusView tasks={managedTasks} sessions={focusSessions} notify={notify} onComplete={recordFocus}/>}/>
             <Route path={viewPaths.insights} element={<InsightsView tasks={managedTasks} habits={habits} points={points} focusMinutes={focusMinutes}/>}/>
-            <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} onSave={saveProfile} onExport={exportAccount} onDelete={deleteAccount}/>}/>
+            <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} notificationRule={notificationRule} notificationPermission={notificationPermission} onSave={saveProfile} onSaveNotificationRule={saveNotificationRule} onRequestNotificationPermission={requestNotificationPermission} onExport={exportAccount} onDelete={deleteAccount}/>}/>
             <Route path="*" element={<Navigate to={viewPaths.today} replace/>}/>
           </Routes>}
         </section>

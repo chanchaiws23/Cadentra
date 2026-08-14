@@ -12,6 +12,15 @@ export interface UserProfile {
   healthAiConsent: boolean
 }
 
+export interface NotificationRule {
+  userId: string
+  enabled: boolean
+  quietStart: string
+  quietEnd: string
+  dailyLimit: number
+  focusBreakMinutes: number
+}
+
 export interface Task {
   id: string
   userId: string

@@ -1,4 +1,4 @@
-import type { Goal, ItemStatus, Milestone, Task } from '@cadentra/domain'
+import type { Goal, ItemStatus, Milestone, NotificationRule, Task } from '@cadentra/domain'
 import { calculateHabitStreak, type CreateGoalInput, type CreateHabitInput, type CreateMilestoneInput, type CreateTaskInput, type RecordFocusSessionInput, type UpdateProfileInput, type UserDataGateway, type UserDataSnapshot } from './cloud-data'
 import { dataError, type DataResult } from './repository'
 
@@ -10,6 +10,7 @@ export interface StorageAdapter {
 
 type PendingMutation = { conflict?: string } & (
   | { id: string; type: 'profile.save'; input: UpdateProfileInput }
+  | { id: string; type: 'notification.save'; input: Omit<NotificationRule, 'userId'> }
   | { id: string; type: 'task.create'; input: CreateTaskInput }
   | { id: string; type: 'goal.create'; input: CreateGoalInput }
   | { id: string; type: 'goal.status'; goalId: string; status: ItemStatus }
@@ -56,7 +57,7 @@ function readJson<T>(storage: StorageAdapter, key: string, fallback: T): T {
 }
 
 function defaultCache(): CachedUserData {
-  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0, focusSessions: [] }, deletedTasks: [], deletedGoals: [], deletedMilestones: [] }
+  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0, focusSessions: [], notificationRule: null }, deletedTasks: [], deletedGoals: [], deletedMilestones: [] }
 }
 
 export function createOfflineUserDataGateway(
@@ -74,6 +75,7 @@ export function createOfflineUserDataGateway(
     cache.snapshot.taskOccurrences ??= []
     cache.snapshot.habits ??= []
     cache.snapshot.focusSessions ??= []
+    cache.snapshot.notificationRule ??= null
     cache.snapshot.habits = cache.snapshot.habits.map((habit) => ({
       ...habit,
       type: habit.type ?? 'boolean',
@@ -99,6 +101,9 @@ export function createOfflineUserDataGateway(
     switch (mutation.type) {
       case 'profile.save':
         snapshot.profile = { id: userId, ...mutation.input }
+        break
+      case 'notification.save':
+        snapshot.notificationRule = { userId, ...mutation.input }
         break
       case 'task.create':
         snapshot.tasks.push({
@@ -238,6 +243,7 @@ export function createOfflineUserDataGateway(
   const replay = (userId: string, mutation: PendingMutation): Promise<DataResult<void>> => {
     switch (mutation.type) {
       case 'profile.save': return remote.saveProfile(userId, mutation.input)
+      case 'notification.save': return remote.saveNotificationRule(userId, mutation.input)
       case 'task.create': return remote.createTask(userId, mutation.input).then((result) => result.ok ? { ok: true, value: undefined } : result)
       case 'goal.create': return remote.createGoal(userId, mutation.input).then((result) => result.ok ? { ok: true, value: undefined } : result)
       case 'goal.status': return remote.setGoalStatus(userId, mutation.goalId, mutation.status)
@@ -311,6 +317,7 @@ export function createOfflineUserDataGateway(
         : { ok: false, error: dataError('offline', 'ยังไม่มีข้อมูลล่าสุดในอุปกรณ์นี้ กรุณาเชื่อมต่ออินเทอร์เน็ตหนึ่งครั้ง') }
     },
     saveProfile: (userId, input) => mutate(userId, { id: createId(), type: 'profile.save', input }),
+    saveNotificationRule: (userId, input) => mutate(userId, { id: createId(), type: 'notification.save', input }),
     exportAccount: (userId) => remote.exportAccount(userId),
     async deleteAccount() {
       const result = await remote.deleteAccount()
