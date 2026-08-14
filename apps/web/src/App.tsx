@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import {
@@ -12,17 +12,9 @@ import { collapseRecurringTasks, completionRate, findScheduleConflicts, pointsFo
 import type { RecordFocusSessionInput, SaveReflectionInput, SyncIssue, UpdateProfileInput, UserDataGateway } from '@cadentra/data'
 import { AppToaster } from './components/AppToaster'
 import { useAuth } from './auth/AuthContext'
-import { CalendarView } from './features/calendar/CalendarView'
-import { FocusView } from './features/focus/FocusView'
-import { GoalsView } from './features/goals/GoalsView'
-import { HabitsView } from './features/habits/HabitsView'
-import { TasksView } from './features/tasks/TasksView'
-import { TodayView } from './features/today/TodayView'
-import { SettingsView } from './features/settings/SettingsView'
-import { InsightsView } from './features/insights/InsightsView'
 import { CoachDialog } from './features/coach/CoachDialog'
 import { useUserData } from './data/useUserData'
-import { useI18n } from './i18n/LocaleProvider'
+import { useI18n } from './i18n/LocaleContext'
 import type { MessageKey } from './i18n/messages'
 import { formatTime, localDateKey, todayKey } from './lib/date'
 import { pathToView, viewPaths, type View } from './routing'
@@ -44,6 +36,15 @@ const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] 
   { id: 'insights', labelKey: 'nav.insights', icon: BarChart3 },
 ]
 
+const TodayView = lazy(() => import('./features/today/TodayView').then((module) => ({ default: module.TodayView })))
+const CalendarView = lazy(() => import('./features/calendar/CalendarView').then((module) => ({ default: module.CalendarView })))
+const TasksView = lazy(() => import('./features/tasks/TasksView').then((module) => ({ default: module.TasksView })))
+const GoalsView = lazy(() => import('./features/goals/GoalsView').then((module) => ({ default: module.GoalsView })))
+const HabitsView = lazy(() => import('./features/habits/HabitsView').then((module) => ({ default: module.HabitsView })))
+const FocusView = lazy(() => import('./features/focus/FocusView').then((module) => ({ default: module.FocusView })))
+const InsightsView = lazy(() => import('./features/insights/InsightsView').then((module) => ({ default: module.InsightsView })))
+const SettingsView = lazy(() => import('./features/settings/SettingsView').then((module) => ({ default: module.SettingsView })))
+
 function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const { session, signOut } = useAuth()
   const { locale, setLocale, t } = useI18n()
@@ -58,6 +59,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const [coachOpen, setCoachOpen] = useState(false)
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission)
   const commandHistory = useCommandHistory()
+  const clearHistory = commandHistory.clear
   const todayTasks = tasks.filter((task) => localDateKey(task.start) === todayKey)
   const managedTasks = collapseRecurringTasks(tasks, todayKey)
   const rate = completionRate(todayTasks)
@@ -89,8 +91,8 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   }, [locale, profile?.locale, setLocale])
 
   useEffect(() => {
-    commandHistory.clear()
-  }, [commandHistory.clear, session?.user.id])
+    clearHistory()
+  }, [clearHistory, session?.user.id])
 
   useEffect(() => {
     const handleHistoryShortcut = (event: KeyboardEvent) => {
@@ -581,6 +583,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">ข้ามไปยังเนื้อหาหลัก</a>
       <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
         <div className="brand"><span className="brand-mark">C</span><span>Cadentra</span></div>
         <nav aria-label="เมนูหลัก">
@@ -615,9 +618,9 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
           </div>
         </header>
 
-        <section className="content">
+        <section className="content" id="main-content" tabIndex={-1}>
           {syncIssues[0] && <SyncConflictBanner issue={syncIssues[0]} onResolve={resolveSyncIssue}/>}
-          {loading ? <DataLoading/> : error ? <DataLoadError message={error} onRetry={() => void reload()}/> : <Routes>
+          {loading ? <DataLoading/> : error ? <DataLoadError message={error} onRetry={() => void reload()}/> : <Suspense fallback={<DataLoading/>}><Routes>
             <Route path="/" element={<Navigate to={viewPaths.today} replace/>}/>
             <Route path={viewPaths.today} element={<TodayView tasks={todayTasks} habits={habits} rate={rate} completedHabits={completedHabits} focusMinutes={focusMinutes} displayName={displayName} onTask={toggleTask} onHabit={toggleHabit} onCoach={() => setCoachOpen(true)} />}/>
             <Route path={viewPaths.calendar} element={<CalendarView tasks={tasks} externalEvents={externalCalendarEvents} onTask={toggleTask} onReschedule={rescheduleTask}/>}/>
@@ -628,7 +631,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
             <Route path={viewPaths.insights} element={<InsightsView tasks={managedTasks} habits={habits} reflections={reflections} rewards={rewards} points={points} focusMinutes={focusMinutes} onSaveReflection={saveReflection} onExportCsv={exportActivityCsv} onExportPdf={exportReviewPdf} onCreateReward={createReward} onRedeemReward={redeemReward}/>}/>
             <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} notificationRule={notificationRule} notificationPermission={notificationPermission} healthAggregates={healthAggregates} onSyncHealthConnect={syncHealthConnect} calendarConnection={calendarConnection} onConnectGoogleCalendar={connectGoogleCalendar} onSyncGoogleCalendar={syncGoogleCalendar} onDisconnectGoogleCalendar={disconnectGoogleCalendar} onSave={saveProfile} onSaveNotificationRule={saveNotificationRule} onRequestNotificationPermission={requestNotificationPermission} onSendTestNotification={sendTestNotification} onExport={exportAccount} onDelete={deleteAccount}/>}/>
             <Route path="*" element={<Navigate to={viewPaths.today} replace/>}/>
-          </Routes>}
+          </Routes></Suspense>}
         </section>
       </main>
 

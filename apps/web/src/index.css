@@ -39,6 +39,25 @@
   }
 }
 
+@layer components {
+  .skip-link {
+    position: fixed;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 1000;
+    transform: translateY(-150%);
+    border-radius: 0.5rem;
+    background: var(--color-ink);
+    color: white;
+    padding: 0.625rem 0.875rem;
+    text-decoration: none;
+  }
+
+  .skip-link:focus {
+    transform: none;
+  }
+}
+
 @keyframes dialog-overlay-in {
   from { opacity: 0; }
   to { opacity: 1; }

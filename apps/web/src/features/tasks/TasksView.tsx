@@ -3,7 +3,7 @@ import { AlertTriangle, Check, Circle, Minus, Plus, Repeat2, Trash2 } from 'luci
 import type { Task } from '@cadentra/domain'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { PageHeading } from '../../components/PageHeading'
-import { useI18n } from '../../i18n/LocaleProvider'
+import { useI18n } from '../../i18n/LocaleContext'
 import { formatTime, localDateKey, todayKey } from '../../lib/date'
 
 interface TasksViewProps {

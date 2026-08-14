@@ -3,7 +3,7 @@ import { Award, ChevronDown, Download, FileText, Gift, Sparkles } from 'lucide-r
 import { motivationProgress, type Habit, type PersonalReward, type Reflection, type ReflectionPeriod, type Task } from '@cadentra/domain'
 import type { SaveReflectionInput } from '@cadentra/data'
 import { PageHeading } from '../../components/PageHeading'
-import { useI18n } from '../../i18n/LocaleProvider'
+import { useI18n } from '../../i18n/LocaleContext'
 import { formatMinutes, todayKey } from '../../lib/date'
 
 interface InsightsViewProps {

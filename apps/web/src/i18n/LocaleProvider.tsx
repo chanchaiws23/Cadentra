@@ -1,15 +1,8 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { translate, type Locale, type MessageKey } from './messages'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { translate, type Locale } from './messages'
+import { LocaleContext, type LocaleContextValue } from './LocaleContext'
 
 const STORAGE_KEY = 'cadentra.locale'
-
-interface LocaleContextValue {
-  locale: Locale
-  setLocale: (locale: Locale) => void
-  t: (key: MessageKey) => string
-}
-
-const LocaleContext = createContext<LocaleContextValue | null>(null)
 
 function initialLocale(): Locale {
   const saved = localStorage.getItem(STORAGE_KEY)
@@ -31,10 +24,4 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   }), [locale])
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>
-}
-
-export function useI18n(): LocaleContextValue {
-  const value = useContext(LocaleContext)
-  if (!value) throw new Error('useI18n must be used within LocaleProvider')
-  return value
 }

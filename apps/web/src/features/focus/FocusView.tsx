@@ -3,7 +3,7 @@ import { Check, ListRestart, Pause, Play, Plus, TimerReset } from 'lucide-react'
 import type { FocusInterruption, FocusSession, Task } from '@cadentra/domain'
 import type { RecordFocusSessionInput } from '@cadentra/data'
 import { PageHeading } from '../../components/PageHeading'
-import { useI18n } from '../../i18n/LocaleProvider'
+import { useI18n } from '../../i18n/LocaleContext'
 
 interface FocusViewProps {
   tasks: Task[]
