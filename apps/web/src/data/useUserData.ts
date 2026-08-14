@@ -3,7 +3,7 @@ import type { SyncIssue, UserDataGateway, UserDataSnapshot } from '@cadentra/dat
 import { expandRecurringTasks } from '@cadentra/domain'
 import { todayKey } from '../lib/date'
 
-const emptySnapshot: UserDataSnapshot = { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0, focusSessions: [], notificationRule: null, reflections: [], calendarConnection: null, externalCalendarEvents: [], rewards: [] }
+const emptySnapshot: UserDataSnapshot = { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0, focusSessions: [], notificationRule: null, reflections: [], calendarConnection: null, externalCalendarEvents: [], rewards: [], aiProposals: [], healthAggregates: [] }
 
 interface UserDataState {
   loading: boolean

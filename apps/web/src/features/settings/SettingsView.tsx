@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { CalendarDays, Download, RefreshCw, Save, ShieldCheck, Trash2, Unlink } from 'lucide-react'
-import type { CalendarConnection, NotificationRule, UserProfile } from '@cadentra/domain'
+import { Activity, CalendarDays, Download, RefreshCw, Save, ShieldCheck, Trash2, Unlink } from 'lucide-react'
+import type { CalendarConnection, DailyHealthAggregate, NotificationRule, UserProfile } from '@cadentra/domain'
 import type { UpdateProfileInput } from '@cadentra/data'
 import { PageHeading } from '../../components/PageHeading'
 
@@ -13,6 +13,8 @@ interface SettingsViewProps {
   onSaveNotificationRule: (input: Omit<NotificationRule, 'userId'>) => Promise<boolean>
   onRequestNotificationPermission: () => Promise<void>
   onSendTestNotification: () => Promise<void>
+  healthAggregates: DailyHealthAggregate[]
+  onSyncHealthConnect: () => Promise<void>
   calendarConnection: CalendarConnection | null
   onConnectGoogleCalendar: () => Promise<void>
   onSyncGoogleCalendar: () => Promise<void>
@@ -37,7 +39,7 @@ function initialValues(profile: UserProfile | null, email: string): UpdateProfil
   }
 }
 
-export function SettingsView({ profile, email, notificationRule, notificationPermission, onSave, onSaveNotificationRule, onRequestNotificationPermission, onSendTestNotification, calendarConnection, onConnectGoogleCalendar, onSyncGoogleCalendar, onDisconnectGoogleCalendar, onExport, onDelete }: SettingsViewProps) {
+export function SettingsView({ profile, email, notificationRule, notificationPermission, onSave, onSaveNotificationRule, onRequestNotificationPermission, onSendTestNotification, healthAggregates, onSyncHealthConnect, calendarConnection, onConnectGoogleCalendar, onSyncGoogleCalendar, onDisconnectGoogleCalendar, onExport, onDelete }: SettingsViewProps) {
   const [values, setValues] = useState(() => initialValues(profile, email))
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -69,6 +71,11 @@ export function SettingsView({ profile, email, notificationRule, notificationPer
             <label className="text-sm font-semibold text-ink">เขตเวลา<input className="mt-2 block min-h-11 w-full rounded-lg border border-line bg-paper px-3.5 font-normal outline-none focus:border-accent focus:ring-3 focus:ring-[#246b5015]" value={values.timezone} onChange={(event) => setValues((current) => ({ ...current, timezone: event.target.value }))} placeholder="Asia/Bangkok" required/></label>
             <label className="text-sm font-semibold text-ink">ภาษา<select className="mt-2 block min-h-11 w-full rounded-lg border border-line bg-paper px-3.5 font-normal outline-none focus:border-accent focus:ring-3 focus:ring-[#246b5015]" value={values.locale} onChange={(event) => setValues((current) => ({ ...current, locale: event.target.value as 'th' | 'en' }))}><option value="th">ไทย</option><option value="en">English</option></select></label>
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-line bg-surface p-6 max-[640px]:p-4">
+          <h2 className="font-display text-xl">Health Connect</h2><p className="mt-1 text-sm text-muted">อ่านเฉพาะยอดรวมก้าวเดิน การนอน และการออกกำลังกาย ไม่เก็บข้อมูลดิบหรือเวชระเบียน</p>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-y border-line py-5"><span className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-[#e0eee8] text-accent"><Activity size={18}/></span><span><strong className="block text-sm">{healthAggregates[0] ? `${healthAggregates[0].steps ?? 0} ก้าว · นอน ${healthAggregates[0].sleepMinutes ?? 0} นาที` : 'ยังไม่มีข้อมูลสุขภาพสรุป'}</strong><small className="text-muted">{healthAggregates[0]?.localDate ?? 'ต้องเปิดจากแอป Android'}</small></span></span><button type="button" className="secondary" onClick={() => void onSyncHealthConnect()}><RefreshCw size={16}/>ซิงก์วันนี้</button></div>
         </section>
 
         <section className="rounded-2xl border border-line bg-surface p-6 max-[640px]:p-4">

@@ -58,7 +58,7 @@ function readJson<T>(storage: StorageAdapter, key: string, fallback: T): T {
 }
 
 function defaultCache(): CachedUserData {
-  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0, focusSessions: [], notificationRule: null, reflections: [], calendarConnection: null, externalCalendarEvents: [], rewards: [] }, deletedTasks: [], deletedGoals: [], deletedMilestones: [] }
+  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0, focusSessions: [], notificationRule: null, reflections: [], calendarConnection: null, externalCalendarEvents: [], rewards: [], aiProposals: [], healthAggregates: [] }, deletedTasks: [], deletedGoals: [], deletedMilestones: [] }
 }
 
 export function createOfflineUserDataGateway(
@@ -81,6 +81,8 @@ export function createOfflineUserDataGateway(
     cache.snapshot.calendarConnection ??= null
     cache.snapshot.externalCalendarEvents ??= []
     cache.snapshot.rewards ??= []
+    cache.snapshot.aiProposals ??= []
+    cache.snapshot.healthAggregates ??= []
     cache.snapshot.habits = cache.snapshot.habits.map((habit) => ({
       ...habit,
       type: habit.type ?? 'boolean',
@@ -338,6 +340,11 @@ export function createOfflineUserDataGateway(
     redeemReward: (userId, rewardId) => remote.redeemReward(userId, rewardId),
     registerDevice: (userId, input) => remote.registerDevice(userId, input),
     sendTestNotification: (userId) => remote.sendTestNotification(userId),
+    requestAIProposal: (userId, instruction, includeHealth) => remote.requestAIProposal(userId, instruction, includeHealth),
+    applyAIProposal: (userId, proposalId, changeIds) => remote.applyAIProposal(userId, proposalId, changeIds),
+    rejectAIProposal: (userId, proposalId) => remote.rejectAIProposal(userId, proposalId),
+    undoAIProposal: (userId, proposalId) => remote.undoAIProposal(userId, proposalId),
+    saveHealthAggregate: (userId, input) => remote.saveHealthAggregate(userId, input),
     exportAccount: (userId) => remote.exportAccount(userId),
     async deleteAccount() {
       const result = await remote.deleteAccount()
