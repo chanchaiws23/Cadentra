@@ -110,6 +110,19 @@ export interface FocusSession {
   status: 'completed'
 }
 
+export type ReflectionPeriod = 'daily' | 'weekly'
+
+export interface Reflection {
+  id: string
+  userId: string
+  period: ReflectionPeriod
+  localDate: string
+  wins: string
+  blockers: string
+  nextStep: string
+  createdAt: string
+}
+
 export interface AIProposalChange {
   id: string
   taskId: string

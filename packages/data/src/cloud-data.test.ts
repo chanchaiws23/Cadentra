@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildHabits, calculateCurrentStreak, isHabitScheduled, mapFocusSessionRow, mapGoalRow, mapMilestoneRow, mapNotificationRuleRow, mapProfileRow, mapTaskRow } from './cloud-data'
+import { buildHabits, calculateCurrentStreak, isHabitScheduled, mapFocusSessionRow, mapGoalRow, mapMilestoneRow, mapNotificationRuleRow, mapProfileRow, mapReflectionRow, mapTaskRow } from './cloud-data'
 
 describe('cloud data mapping', () => {
   it('maps user profile preferences without exposing database column names', () => {
@@ -69,5 +69,9 @@ describe('cloud data mapping', () => {
 
   it('maps notification quiet hours without database names', () => {
     expect(mapNotificationRuleRow({ user_id: 'user-1', enabled: true, quiet_start: '22:00:00', quiet_end: '07:00:00', daily_limit: 5, focus_break_minutes: 45 })).toEqual({ userId: 'user-1', enabled: true, quietStart: '22:00', quietEnd: '07:00', dailyLimit: 5, focusBreakMinutes: 45 })
+  })
+
+  it('maps structured reflection content', () => {
+    expect(mapReflectionRow({ id: 'review-1', user_id: 'user-1', period: 'weekly', local_date: '2026-08-14', content: { wins: 'Focused', nextStep: 'Repeat' }, created_at: '2026-08-14T00:00:00Z' })).toMatchObject({ period: 'weekly', wins: 'Focused', blockers: '', nextStep: 'Repeat' })
   })
 })

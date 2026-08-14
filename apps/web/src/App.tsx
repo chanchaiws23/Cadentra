@@ -2,15 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import {
-  AlertTriangle, BarChart3, Bell, CalendarDays, ChevronDown, Cloud, CloudOff,
+  AlertTriangle, BarChart3, Bell, CalendarDays, Cloud, CloudOff,
   Flame, Focus, Gauge, Languages, LayoutList, Menu,
-  LogOut, Plus, Redo2, Search, Settings, Sparkles,
+  LogOut, Plus, Redo2, Search, Settings,
   Target, Trophy, X,
   Undo2,
 } from 'lucide-react'
 import { collapseRecurringTasks, completionRate, findScheduleConflicts, pointsForCompletion, type Goal, type Habit, type HabitType, type Milestone, type Task } from '@cadentra/domain'
-import type { RecordFocusSessionInput, SyncIssue, UpdateProfileInput, UserDataGateway } from '@cadentra/data'
-import { PageHeading } from './components/PageHeading'
+import type { RecordFocusSessionInput, SaveReflectionInput, SyncIssue, UpdateProfileInput, UserDataGateway } from '@cadentra/data'
 import { AppToaster } from './components/AppToaster'
 import { useAuth } from './auth/AuthContext'
 import { CalendarView } from './features/calendar/CalendarView'
@@ -20,13 +19,15 @@ import { HabitsView } from './features/habits/HabitsView'
 import { TasksView } from './features/tasks/TasksView'
 import { TodayView } from './features/today/TodayView'
 import { SettingsView } from './features/settings/SettingsView'
+import { InsightsView } from './features/insights/InsightsView'
 import { useUserData } from './data/useUserData'
 import { useI18n } from './i18n/LocaleProvider'
 import type { MessageKey } from './i18n/messages'
-import { formatMinutes, formatTime, localDateKey, todayKey } from './lib/date'
+import { formatTime, localDateKey, todayKey } from './lib/date'
 import { pathToView, viewPaths, type View } from './routing'
 import { useCommandHistory } from './history/useCommandHistory'
 import { canSendNotification } from './lib/notifications'
+import { buildActivityCsv } from './lib/activity-export'
 
 const navItems: { id: View; labelKey: MessageKey; icon: typeof CalendarDays }[] = [
   { id: 'today', labelKey: 'nav.today', icon: Gauge },
@@ -45,7 +46,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
   const navigate = useNavigate()
   const view = pathToView(location.pathname)
   const { snapshot, loading, error, reload, online, pendingCount, syncIssues } = useUserData(dataGateway, session?.user.id)
-  const { profile, tasks, goals, milestones, habits, points, focusMinutes, focusSessions, notificationRule } = snapshot
+  const { profile, tasks, goals, milestones, habits, points, focusMinutes, focusSessions, notificationRule, reflections } = snapshot
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [habitAddOpen, setHabitAddOpen] = useState(false)
@@ -420,6 +421,28 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
     return true
   }
 
+  const exportActivityCsv = () => {
+    const url = URL.createObjectURL(new Blob([buildActivityCsv(managedTasks, habits, reflections)], { type: 'text/csv;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `cadentra-activity-${todayKey}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    toast.success('เตรียมไฟล์ CSV แล้ว')
+  }
+
+  const saveReflection = async (input: SaveReflectionInput) => {
+    if (!dataGateway || !session) return false
+    const result = await dataGateway.saveReflection(session.user.id, input)
+    if (!result.ok) {
+      toast.error('บันทึกการทบทวนไม่สำเร็จ', { description: result.error.message })
+      return false
+    }
+    await reload()
+    toast.success(input.period === 'daily' ? 'บันทึก Daily Reflection แล้ว' : 'บันทึก Weekly Review แล้ว')
+    return true
+  }
+
   const deleteAccount = async () => {
     if (!dataGateway) return false
     const result = await dataGateway.deleteAccount()
@@ -497,7 +520,7 @@ function App({ dataGateway }: { dataGateway: UserDataGateway | null }) {
             <Route path={viewPaths.goals} element={<GoalsView goals={goals} milestones={milestones} tasks={managedTasks} onCreateGoal={createGoal} onToggleGoal={toggleGoal} onDeleteGoal={deleteGoal} onCreateMilestone={createMilestone} onToggleMilestone={toggleMilestone} onDeleteMilestone={deleteMilestone}/>}/>
             <Route path={viewPaths.habits} element={<HabitsView habits={habits} onHabitValue={setHabitValue} onFreeze={useHabitFreeze} onAdd={() => setHabitAddOpen(true)}/>}/>
             <Route path={viewPaths.focus} element={<FocusView tasks={managedTasks} sessions={focusSessions} notify={notify} onComplete={recordFocus}/>}/>
-            <Route path={viewPaths.insights} element={<InsightsView tasks={managedTasks} habits={habits} points={points} focusMinutes={focusMinutes}/>}/>
+            <Route path={viewPaths.insights} element={<InsightsView tasks={managedTasks} habits={habits} reflections={reflections} points={points} focusMinutes={focusMinutes} onSaveReflection={saveReflection} onExportCsv={exportActivityCsv}/>}/>
             <Route path={viewPaths.settings} element={<SettingsView profile={profile} email={accountEmail} notificationRule={notificationRule} notificationPermission={notificationPermission} onSave={saveProfile} onSaveNotificationRule={saveNotificationRule} onRequestNotificationPermission={requestNotificationPermission} onExport={exportAccount} onDelete={deleteAccount}/>}/>
             <Route path="*" element={<Navigate to={viewPaths.today} replace/>}/>
           </Routes>}
@@ -522,17 +545,6 @@ function DataLoading() {
 
 function DataLoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return <div className="grid min-h-[420px] place-items-center" role="alert"><div className="max-w-md text-center"><h2 className="font-display text-2xl">โหลดข้อมูลไม่สำเร็จ</h2><p className="mt-2 text-sm text-muted">{message}</p><button className="primary mt-5" onClick={onRetry}>ลองใหม่</button></div></div>
-}
-
-function InsightsView({ tasks, habits, points, focusMinutes }: { tasks: Task[]; habits: Habit[]; points: number; focusMinutes: number }) {
-  const { t } = useI18n()
-  const completedTasks = tasks.filter((task) => task.status === 'done').length
-  const completedToday = habits.filter((habit) => habit.completedDates.includes(todayKey)).length
-  const consistency = habits.length ? Math.round((completedToday / habits.length) * 100) : 0
-  return <><PageHeading eyebrow={t('insights.eyebrow')} title={t('insights.title')} detail={t('insights.detail')} action={<button className="filter-button">สัปดาห์นี้ <ChevronDown size={14}/></button>}/>
-    <div className="insight-strip"><div><small>ความสม่ำเสมอวันนี้</small><strong>{consistency}%</strong><em>{completedToday}/{habits.length} นิสัย</em></div><div><small>เวลาโฟกัสวันนี้</small><strong>{formatMinutes(focusMinutes)}</strong><em>จาก Focus sessions</em></div><div><small>งานสำเร็จ</small><strong>{completedTasks}</strong><em>จาก {tasks.length} งาน</em></div><div><small>คะแนนสะสม</small><strong>{points}</strong><em>จากกิจกรรมที่บันทึก</em></div></div>
-    <div className="insights-grid"><section className="chart-panel"><div className="section-title"><div><h2>ข้อมูลแนวโน้ม</h2><p>Cadentra จะแสดงแนวโน้มเมื่อมีข้อมูลหลายวันเพียงพอ</p></div></div><div className="grid min-h-48 place-items-center text-sm text-muted">ยังไม่มีข้อมูลรายวันที่เพียงพอ</div></section><section className="reflection-panel"><span className="reflection-icon"><Sparkles/></span><p className="eyebrow">สิ่งที่ค้นพบ</p><h2>ยังไม่มีข้อสรุป</h2><p>ใช้งานและทำ Weekly Review ต่อเนื่อง แล้วระบบจะสรุปจากข้อมูลจริงของคุณที่นี่</p></section></div>
-    <section className="streak-section"><div className="section-title"><div><h2>นิสัยที่กำลังเติบโต</h2><p>ความสม่ำเสมอสำคัญกว่าความสมบูรณ์แบบ</p></div></div>{habits.map(h => <div className="streak-row" key={h.id}><strong>{h.title}</strong><div>{Array.from({length: 14}, (_, i) => <i className={i < Math.min(h.streak, 14) ? 'filled' : ''} key={i}/>)}</div><span>{h.streak} วัน</span></div>)}</section></>
 }
 
 export function AddTaskModal({ goals, tasks, onClose, onAdd }: { goals: Goal[]; tasks: Task[]; onClose: () => void; onAdd: (title: string, time: string, duration: number, goalId?: string, recurrenceRule?: string) => void }) {

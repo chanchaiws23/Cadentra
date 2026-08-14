@@ -1,5 +1,5 @@
 import type { Goal, ItemStatus, Milestone, NotificationRule, Task } from '@cadentra/domain'
-import { calculateHabitStreak, type CreateGoalInput, type CreateHabitInput, type CreateMilestoneInput, type CreateTaskInput, type RecordFocusSessionInput, type UpdateProfileInput, type UserDataGateway, type UserDataSnapshot } from './cloud-data'
+import { calculateHabitStreak, type CreateGoalInput, type CreateHabitInput, type CreateMilestoneInput, type CreateTaskInput, type RecordFocusSessionInput, type SaveReflectionInput, type UpdateProfileInput, type UserDataGateway, type UserDataSnapshot } from './cloud-data'
 import { dataError, type DataResult } from './repository'
 
 export interface StorageAdapter {
@@ -11,6 +11,7 @@ export interface StorageAdapter {
 type PendingMutation = { conflict?: string } & (
   | { id: string; type: 'profile.save'; input: UpdateProfileInput }
   | { id: string; type: 'notification.save'; input: Omit<NotificationRule, 'userId'> }
+  | { id: string; type: 'reflection.save'; input: SaveReflectionInput }
   | { id: string; type: 'task.create'; input: CreateTaskInput }
   | { id: string; type: 'goal.create'; input: CreateGoalInput }
   | { id: string; type: 'goal.status'; goalId: string; status: ItemStatus }
@@ -57,7 +58,7 @@ function readJson<T>(storage: StorageAdapter, key: string, fallback: T): T {
 }
 
 function defaultCache(): CachedUserData {
-  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0, focusSessions: [], notificationRule: null }, deletedTasks: [], deletedGoals: [], deletedMilestones: [] }
+  return { snapshot: { profile: null, tasks: [], taskOccurrences: [], goals: [], milestones: [], habits: [], points: 0, focusMinutes: 0, focusSessions: [], notificationRule: null, reflections: [] }, deletedTasks: [], deletedGoals: [], deletedMilestones: [] }
 }
 
 export function createOfflineUserDataGateway(
@@ -76,6 +77,7 @@ export function createOfflineUserDataGateway(
     cache.snapshot.habits ??= []
     cache.snapshot.focusSessions ??= []
     cache.snapshot.notificationRule ??= null
+    cache.snapshot.reflections ??= []
     cache.snapshot.habits = cache.snapshot.habits.map((habit) => ({
       ...habit,
       type: habit.type ?? 'boolean',
@@ -105,6 +107,12 @@ export function createOfflineUserDataGateway(
       case 'notification.save':
         snapshot.notificationRule = { userId, ...mutation.input }
         break
+      case 'reflection.save': {
+        const existing = snapshot.reflections.find((entry) => entry.period === mutation.input.period && entry.localDate === mutation.input.localDate)
+        const reflection = { id: existing?.id ?? mutation.id, userId, ...mutation.input, createdAt: existing?.createdAt ?? new Date().toISOString() }
+        snapshot.reflections = [reflection, ...snapshot.reflections.filter((entry) => entry.id !== reflection.id)]
+        break
+      }
       case 'task.create':
         snapshot.tasks.push({
           id: mutation.input.entityId!, userId, title: mutation.input.title,
@@ -244,6 +252,7 @@ export function createOfflineUserDataGateway(
     switch (mutation.type) {
       case 'profile.save': return remote.saveProfile(userId, mutation.input)
       case 'notification.save': return remote.saveNotificationRule(userId, mutation.input)
+      case 'reflection.save': return remote.saveReflection(userId, mutation.input)
       case 'task.create': return remote.createTask(userId, mutation.input).then((result) => result.ok ? { ok: true, value: undefined } : result)
       case 'goal.create': return remote.createGoal(userId, mutation.input).then((result) => result.ok ? { ok: true, value: undefined } : result)
       case 'goal.status': return remote.setGoalStatus(userId, mutation.goalId, mutation.status)
@@ -318,6 +327,7 @@ export function createOfflineUserDataGateway(
     },
     saveProfile: (userId, input) => mutate(userId, { id: createId(), type: 'profile.save', input }),
     saveNotificationRule: (userId, input) => mutate(userId, { id: createId(), type: 'notification.save', input }),
+    saveReflection: (userId, input) => mutate(userId, { id: createId(), type: 'reflection.save', input }),
     exportAccount: (userId) => remote.exportAccount(userId),
     async deleteAccount() {
       const result = await remote.deleteAccount()
