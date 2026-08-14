@@ -19,3 +19,22 @@ self.addEventListener('fetch', (event) => {
     return response
   }).catch(() => caches.match(event.request).then((cached) => cached || caches.match('/'))))
 })
+
+self.addEventListener('push', (event) => {
+  const payload = event.data ? event.data.json() : {}
+  event.waitUntil(self.registration.showNotification(payload.title || 'Cadentra', {
+    body: payload.body || '',
+    icon: '/favicon.svg',
+    badge: '/favicon.svg',
+    data: { url: payload.url || '/today' },
+    tag: payload.tag || 'cadentra-reminder',
+  }))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    const existing = clients.find((client) => 'focus' in client)
+    return existing ? existing.focus() : self.clients.openWindow(event.notification.data?.url || '/today')
+  }))
+})

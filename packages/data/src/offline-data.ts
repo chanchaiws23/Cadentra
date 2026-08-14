@@ -336,6 +336,8 @@ export function createOfflineUserDataGateway(
     disconnectGoogleCalendar: (userId) => remote.disconnectGoogleCalendar(userId),
     createReward: (userId, title, pointCost) => remote.createReward(userId, title, pointCost),
     redeemReward: (userId, rewardId) => remote.redeemReward(userId, rewardId),
+    registerDevice: (userId, input) => remote.registerDevice(userId, input),
+    sendTestNotification: (userId) => remote.sendTestNotification(userId),
     exportAccount: (userId) => remote.exportAccount(userId),
     async deleteAccount() {
       const result = await remote.deleteAccount()

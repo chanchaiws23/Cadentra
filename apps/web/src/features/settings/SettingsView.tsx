@@ -12,6 +12,7 @@ interface SettingsViewProps {
   notificationPermission: NotificationPermission | 'unsupported'
   onSaveNotificationRule: (input: Omit<NotificationRule, 'userId'>) => Promise<boolean>
   onRequestNotificationPermission: () => Promise<void>
+  onSendTestNotification: () => Promise<void>
   calendarConnection: CalendarConnection | null
   onConnectGoogleCalendar: () => Promise<void>
   onSyncGoogleCalendar: () => Promise<void>
@@ -36,7 +37,7 @@ function initialValues(profile: UserProfile | null, email: string): UpdateProfil
   }
 }
 
-export function SettingsView({ profile, email, notificationRule, notificationPermission, onSave, onSaveNotificationRule, onRequestNotificationPermission, calendarConnection, onConnectGoogleCalendar, onSyncGoogleCalendar, onDisconnectGoogleCalendar, onExport, onDelete }: SettingsViewProps) {
+export function SettingsView({ profile, email, notificationRule, notificationPermission, onSave, onSaveNotificationRule, onRequestNotificationPermission, onSendTestNotification, calendarConnection, onConnectGoogleCalendar, onSyncGoogleCalendar, onDisconnectGoogleCalendar, onExport, onDelete }: SettingsViewProps) {
   const [values, setValues] = useState(() => initialValues(profile, email))
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -85,7 +86,7 @@ export function SettingsView({ profile, email, notificationRule, notificationPer
           <div className="mt-5 divide-y divide-line">
             <label className="flex cursor-pointer items-start justify-between gap-5 py-4"><span><strong className="block text-sm">เปิดการแจ้งเตือนบนอุปกรณ์นี้</strong><small className="mt-1 block text-muted">สิทธิ์ปัจจุบัน: {notificationPermission}</small></span><input aria-label="เปิดการแจ้งเตือนบนอุปกรณ์นี้" type="checkbox" className="mt-1 size-5 accent-accent" checked={notificationValues.enabled} onChange={(event) => setNotificationValues((current) => ({ ...current, enabled: event.target.checked }))}/></label>
             <div className="grid gap-4 py-5 sm:grid-cols-2"><label className="text-sm font-semibold">Quiet hours เริ่ม<input aria-label="Quiet hours เริ่ม" type="time" className="mt-2 block min-h-11 w-full rounded-lg border border-line bg-paper px-3" value={notificationValues.quietStart} onChange={(event) => setNotificationValues((current) => ({ ...current, quietStart: event.target.value }))}/></label><label className="text-sm font-semibold">Quiet hours สิ้นสุด<input aria-label="Quiet hours สิ้นสุด" type="time" className="mt-2 block min-h-11 w-full rounded-lg border border-line bg-paper px-3" value={notificationValues.quietEnd} onChange={(event) => setNotificationValues((current) => ({ ...current, quietEnd: event.target.value }))}/></label><label className="text-sm font-semibold">จำกัดต่อวัน<input aria-label="จำกัดการแจ้งเตือนต่อวัน" type="number" min="1" max="20" className="mt-2 block min-h-11 w-full rounded-lg border border-line bg-paper px-3" value={notificationValues.dailyLimit} onChange={(event) => setNotificationValues((current) => ({ ...current, dailyLimit: Number(event.target.value) }))}/></label><label className="text-sm font-semibold">เตือนพักหลังโฟกัส<input aria-label="เตือนพักหลังโฟกัส" type="number" min="15" max="180" className="mt-2 block min-h-11 w-full rounded-lg border border-line bg-paper px-3" value={notificationValues.focusBreakMinutes} onChange={(event) => setNotificationValues((current) => ({ ...current, focusBreakMinutes: Number(event.target.value) }))}/><small className="mt-1 block text-muted">นาที</small></label></div>
-            <div className="pt-4"><button type="button" className="secondary" onClick={() => void onRequestNotificationPermission()}>ขอสิทธิ์จากเบราว์เซอร์</button></div>
+            <div className="flex flex-wrap gap-2 pt-4"><button type="button" className="secondary" onClick={() => void onRequestNotificationPermission()}>ลงทะเบียน Push บนอุปกรณ์นี้</button><button type="button" className="secondary" disabled={notificationPermission !== 'granted'} onClick={() => void onSendTestNotification()}>ส่งการแจ้งเตือนทดสอบ</button></div>
           </div>
         </section>
 
