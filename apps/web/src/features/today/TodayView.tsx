@@ -1,7 +1,7 @@
 import { Check, ChevronDown, Circle, Flame, Play, Sparkles, Zap } from 'lucide-react'
 import type { Habit, Task } from '@cadentra/domain'
 import { PageHeading } from '../../components/PageHeading'
-import { useI18n } from '../../i18n/LocaleProvider'
+import { useI18n } from '../../i18n/LocaleContext'
 import { formatMinutes, formatTime, todayKey } from '../../lib/date'
 
 interface TodayViewProps {

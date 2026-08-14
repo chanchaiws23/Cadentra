@@ -3,7 +3,7 @@ import { CalendarDays, Check, Circle, Flame, Plus, Snowflake } from 'lucide-reac
 import type { Habit, HabitType } from '@cadentra/domain'
 import { isHabitScheduled } from '@cadentra/data'
 import { PageHeading } from '../../components/PageHeading'
-import { useI18n } from '../../i18n/LocaleProvider'
+import { useI18n } from '../../i18n/LocaleContext'
 import { localDateKey, todayKey } from '../../lib/date'
 
 interface HabitsViewProps {

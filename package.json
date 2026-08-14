@@ -9,6 +9,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
+    "check:bundle": "node scripts/check-web-budget.mjs",
     "android:sync": "npm --prefix apps run android:sync",
     "android:open": "npm --prefix apps run android:open",
     "check": "npm run typecheck && npm run test && npm run build"

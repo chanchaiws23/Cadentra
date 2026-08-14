@@ -3,8 +3,9 @@ import * as AlertDialog from '@radix-ui/react-alert-dialog'
 import { AlertTriangle, CalendarRange, Check, ChevronLeft, ChevronRight, Clock3, GripVertical, Minus, Plus } from 'lucide-react'
 import { conflictingTaskIds, findScheduleConflicts, type ExternalCalendarEvent, type Task } from '@cadentra/domain'
 import { PageHeading } from '../../components/PageHeading'
-import { useI18n } from '../../i18n/LocaleProvider'
+import { useI18n } from '../../i18n/LocaleContext'
 import { formatTime, localDateKey } from '../../lib/date'
+import { shiftSchedule } from './schedule'
 
 interface CalendarViewProps {
   tasks: Task[]
@@ -31,17 +32,6 @@ function currentWorkWeek() {
     date.setDate(monday.getDate() + index)
     return { date, key: localDateKey(date) }
   })
-}
-
-export function shiftSchedule(task: Task, minutes = 0, days = 0, durationMinutes = 0): Pick<Task, 'start' | 'end'> {
-  const start = new Date(task.start)
-  const end = new Date(task.end)
-  start.setDate(start.getDate() + days)
-  end.setDate(end.getDate() + days)
-  start.setMinutes(start.getMinutes() + minutes)
-  end.setMinutes(end.getMinutes() + minutes + durationMinutes)
-  if (end.getTime() - start.getTime() < 15 * 60_000) end.setTime(start.getTime() + 15 * 60_000)
-  return { start: start.toISOString(), end: end.toISOString() }
 }
 
 function SchedulePreview({ proposal, onCancel, onConfirm }: { proposal: ScheduleProposal; onCancel: () => void; onConfirm: () => void }) {
